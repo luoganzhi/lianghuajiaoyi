@@ -1,0 +1,74 @@
+
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>{{ title }}</title>
+                <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .container { max-width: 1200px; margin: 0 auto; }
+                    .section { margin-bottom: 30px; }
+                    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+                    .metric-card {
+                        padding: 15px;
+                        border-radius: 8px;
+                        background: #f5f5f5;
+                        text-align: center;
+                    }
+                    .chart { margin: 20px 0; }
+                    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                    th, td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+                    th { background: #f5f5f5; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>{{ title }}</h1>
+                    
+                    <div class="section">
+                        <h2>交易统计</h2>
+                        <div class="metrics">
+                            {% for metric in metrics %}
+                            <div class="metric-card">
+                                <h3>{{ metric.name }}</h3>
+                                <p>{{ metric.value }}</p>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <div class="section">
+                        <h2>图表</h2>
+                        {% for chart in charts %}
+                        <div class="chart" id="{{ chart.id }}"></div>
+                        <script>
+                            var data = {{ chart.data | safe }};
+                            var layout = {{ chart.layout | safe }};
+                            Plotly.newPlot('{{ chart.id }}', data, layout);
+                        </script>
+                        {% endfor %}
+                    </div>
+                    
+                    {% if trades %}
+                    <div class="section">
+                        <h2>最近交易</h2>
+                        <table>
+                            <tr>
+                                {% for header in trades[0].keys() %}
+                                <th>{{ header }}</th>
+                                {% endfor %}
+                            </tr>
+                            {% for trade in trades %}
+                            <tr>
+                                {% for value in trade.values() %}
+                                <td>{{ value }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </div>
+                    {% endif %}
+                </div>
+            </body>
+            </html>
+            
