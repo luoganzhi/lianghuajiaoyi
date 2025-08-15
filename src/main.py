@@ -271,10 +271,10 @@ def check_existing_take_profit_orders(account, symbol):
                     return True
             
             print(f"🔍 未发现现有止盈单")
-            return False
+        return False
         else:
             print(f"⚠️ 查询订单失败: {response}")
-            return False
+        return False
             
     except Exception as e:
         print(f"❌ 查询现有订单异常: {e}")
@@ -537,7 +537,7 @@ def _close_position(account, symbol, position_info, price, position_type):
             print(f"  保证金收益率: {pnl_pct_vs_margin:.2f}%")
             print(f"  保证金: {margin_used} USDT")
             
-            return True
+    return True
         else:
             print("❌ 合约平仓失败")
             return False
@@ -1782,19 +1782,19 @@ def main():
                 
                 if position_size >= MIN_POSITION_SIZE and risk_manager.check_position_limit(symbol, position_size, capital):
                     try:
-                        order = account.place_order(symbol, order_type="market", side="buy", amount=position_size)
+                    order = account.place_order(symbol, order_type="market", side="buy", amount=position_size)
                         print(f"✅ 买入成功! 订单ID: {order.get('id', 'N/A')}")
                         in_position = True
-                        
-                        # 记录交易
+                    
+                    # 记录交易
                         trade_data = {
-                            "timestamp": datetime.now(),
-                            "symbol": symbol,
-                            "side": "buy",
-                            "size": position_size,
-                            "price": price,
-                            "value": position_value,
-                            "type": "entry",
+                        "timestamp": datetime.now(),
+                        "symbol": symbol,
+                        "side": "buy",
+                        "size": position_size,
+                        "price": price,
+                        "value": position_value,
+                        "type": "entry",
                             "order_id": order.get("id", ""),
                             "status": order.get("status", "")
                         }
@@ -1826,14 +1826,14 @@ def main():
                         print(f"  卖出价格: {price:.2f} USDT")
                         print(f"  交易价值: {btc_balance * price:.2f} USDT")
                         in_position = False
-                        
-                        # 记录交易
+                    
+                    # 记录交易
                         trade_data = {
-                            "timestamp": datetime.now(),
-                            "symbol": symbol,
-                            "side": "sell",
+                        "timestamp": datetime.now(),
+                        "symbol": symbol,
+                        "side": "sell",
                             "size": btc_balance,
-                            "price": price,
+                        "price": price,
                             "value": btc_balance * price,
                             "type": "exit",
                             "order_id": order.get("id", ""),
@@ -1860,11 +1860,11 @@ def main():
                     print(f"\n🚨 {stop_type}触发!")
                     
                     try:
-                        order = account.place_order(symbol, order_type="market", side="sell", amount=size)
+                    order = account.place_order(symbol, order_type="market", side="sell", amount=size)
                         print(f"✅ {stop_type}执行成功! 订单ID: {order.get('id', 'N/A')}")
-                        
-                        # 计算收益
-                        profit = (current_price - entry_price) * size
+                    
+                    # 计算收益
+                    profit = (current_price - entry_price) * size
                         profit_pct = (profit / (entry_price * size)) * 100
                         
                         print(f"📊 {stop_type}详情:")
@@ -1873,17 +1873,17 @@ def main():
                         print(f"  卖出价格: {current_price:.2f} USDT")
                         print(f"  盈亏金额: {profit:.2f} USDT")
                         print(f"  盈亏比例: {profit_pct:.2f}% (基于交易价值)")
-                        
-                        # 记录交易
+                    
+                    # 记录交易
                         trade_data = {
-                            "timestamp": datetime.now(),
-                            "symbol": symbol,
-                            "side": "sell",
-                            "size": size,
-                            "price": current_price,
+                        "timestamp": datetime.now(),
+                        "symbol": symbol,
+                        "side": "sell",
+                        "size": size,
+                        "price": current_price,
                             "value": size * current_price,
-                            "profit": profit if profit > 0 else 0,
-                            "loss": abs(profit) if profit < 0 else 0,
+                        "profit": profit if profit > 0 else 0,
+                        "loss": abs(profit) if profit < 0 else 0,
                             "type": "stop" if stop_result["stop_loss_triggered"] else "take_profit",
                             "order_id": order.get("id", ""),
                             "status": order.get("status", "")
