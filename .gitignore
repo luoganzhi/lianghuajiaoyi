@@ -100,11 +100,14 @@ dmypy.json
 # 日志文件
 logs/
 *.log
+risk_monitor.log
+trade_monitor.log
 
 # 配置文件备份
 *_backup_*.py
 *_backup_*.json
 *_backup_*.yaml
+config_backup_*.py
 
 # 数据文件
 data/
@@ -156,11 +159,24 @@ test_*.py
 *_test.py
 *_example.py
 
+# 工具和脚本文件
+tools/
+adjust_kline_interval.py
+config_template.py
+high_precision_mode_example.py
+debug_equity.py
+run_*.py
+test_strategy_integration.py
+
 # 文档备份
 *_SUMMARY.md
 *_FIX.md
 *_UPDATE.md
 *_USAGE.md
+*_CONFIGURABLE_SUMMARY.md
+
+# 文档目录
+docs/
 
 # 其他
 *.bak

@@ -30,9 +30,20 @@ def setup_logging():
         ]
     )
     
+    # 确保所有模块的日志记录器都使用相同的配置
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
     # 设置特定模块的日志级别
     logging.getLogger('ccxt').setLevel(logging.WARNING)
     logging.getLogger('urllib3').setLevel(logging.WARNING)
+    
+    # 强制所有模块的日志记录器继承根配置
+    for name in logging.root.manager.loggerDict:
+        logger = logging.getLogger(name)
+        if not logger.handlers:  # 如果该日志记录器没有处理器
+            logger.handlers = root_logger.handlers[:]  # 复制根日志记录器的处理器
+            logger.propagate = False  # 防止重复输出
 
 # 初始化日志
 setup_logging()
@@ -578,6 +589,12 @@ def futures_trading_main():
     """
     print("🚀 启动合约交易模式...")
     
+    # 记录程序启动
+    logging.info(f"🚀 合约交易程序启动")
+    logging.info(f"📅 启动时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    logging.info(f"🐍 Python版本: {sys.version}")
+    logging.info(f"📁 工作目录: {os.getcwd()}")
+    
     # 清理之前的数据
     clear_previous_data()
     
@@ -663,8 +680,22 @@ def futures_trading_main():
             return
         
         trade_monitor = TradeMonitor()
-        # 使用新的合约交易策略 - 启用调试模式以降低信号生成条件
-        strategy = ContractDailyTradingStrategy(debug_mode=True)
+        # 使用新的合约交易策略 - 启用调试模式以降低信号生成条件，从配置文件读取K线周期
+        kline_interval = CONTRACT_CONFIG.get('kline_interval', '1m')  # 默认1分钟
+        strategy = ContractDailyTradingStrategy(debug_mode=True, kline_interval=kline_interval)
+        
+        # 🎯 启用高精度模式 - 25%保证金止盈
+        strategy.enable_high_precision_mode()
+        
+        # 记录策略初始化详情
+        logging.info(f"📊 策略初始化完成:")
+        logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
+        logging.info(f"  - 策略模式: {strategy.get_strategy_mode()}")
+        logging.info(f"  - 调试模式: {strategy.debug_mode}")
+        logging.info(f"  - 止盈比例: {strategy.take_profit*100:.3f}%")
+        logging.info(f"  - 杠杆倍数: {strategy.leverage}x")
+        logging.info(f"  - 保证金模式: {strategy.margin_mode}")
+        logging.info(f"  - K线间隔: {strategy.kline_interval}")
         
         print("✅ 所有组件初始化成功！")
         
@@ -689,7 +720,8 @@ def futures_trading_main():
     print("🚀 合约每日交易策略 - 高杠杆版本")
     print("=" * 50)
     print(f"策略类型: {strategy.__class__.__name__}")
-    print(f"止盈设置: {strategy.take_profit * 100:.1f}% (基于保证金)")
+    print(f"策略模式: {strategy.get_strategy_mode()}")
+    print(f"止盈设置: {strategy.take_profit * 100:.3f}% (基于保证金)")
     print(f"止损设置: 无止损 (强制平仓: -100%保证金)")
     print(f"杠杆倍数: {leverage}x")
     print(f"保证金模式: {strategy.margin_mode}")
@@ -704,6 +736,7 @@ def futures_trading_main():
         print(f"  最小成交量比例: 1.5 → {strategy.min_volume_ratio}")
         print(f"  价格回调比例: 1.0% → {strategy.price_pullback*100:.1f}%")
         print(f"  短期MA: 5 → {strategy.ma_short}")
+        print(f"  长期MA: 20 → {strategy.ma_long}")
         print(f"  K线间隔: 15m → {strategy.kline_interval}")
     print("=" * 50)
     
@@ -721,10 +754,20 @@ def futures_trading_main():
     
     # 🔍 程序启动时立即检查持仓状态
     print(f"\n🔍 程序启动时检查持仓状态...")
+    logging.info(f"🔍 程序启动时检查持仓状态...")
     try:
         initial_position = get_futures_position(account, symbol)
         if initial_position and initial_position['size'] != 0:
             print(f"⚠️ 检测到现有持仓: {initial_position['size']:.4f}张 | 盈亏: {initial_position['unrealized_pnl']:.2f}USDT")
+            
+            # 记录启动时持仓详情
+            logging.info(f"⚠️ 程序启动时检测到现有持仓:")
+            logging.info(f"  - 持仓数量: {initial_position['size']:.4f} 张")
+            logging.info(f"  - 入场价格: {initial_position['entry_price']:.2f} USDT")
+            logging.info(f"  - 未实现盈亏: {initial_position['unrealized_pnl']:.2f} USDT")
+            logging.info(f"  - 持仓方向: {'做多' if initial_position['size'] > 0 else '做空'}")
+            logging.info(f"  - 杠杆倍数: {initial_position.get('leverage', 'N/A')}")
+            logging.info(f"  - 保证金模式: {initial_position.get('margin_mode', 'N/A')}")
             
             # 立即设置持仓状态，防止开新仓
             in_position = True
@@ -737,18 +780,41 @@ def futures_trading_main():
                 actual_position_size = initial_position['size']
                 position_type = initial_position.get('posSide', 'long')
                 
+                # 添加调试信息
+                print(f"🔍 调试持仓方向判断:")
+                print(f"  - 原始持仓数量: {initial_position.get('size', 'N/A')}")
+                print(f"  - 转换后持仓数量: {actual_position_size}")
+                print(f"  - 持仓数量类型: {type(actual_position_size)}")
+                print(f"  - 持仓数量 > 0: {actual_position_size > 0}")
+                
                 margin_take_profit_pct = CONTRACT_CONFIG['take_profit_pct']  # 保证金止盈比例：10%
                 price_take_profit_pct = margin_take_profit_pct / leverage  # 价格止盈比例
                 
-                # 根据持仓数量判断方向：正数为做多，负数为做空
-                if actual_position_size > 0:  # 做多持仓
-                    actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                    entry_side = 'buy'  # 做多开仓方向
-                else:  # 做空持仓
-                    actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                    entry_side = 'sell'  # 做空开仓方向
+                # 根据持仓类型判断开仓方向
+                position_type = initial_position.get('position_type', 'unknown')
+                print(f"  - 持仓类型: {position_type}")
                 
-                tp_order = set_take_profit_order(account, symbol, entry_side, actual_position_size, actual_take_profit_price)
+                if position_type == 'long':  # 做多持仓
+                    actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
+                    startup_entry_side = 'buy'  # 做多开仓方向
+                    print(f"  - 判断结果: 做多持仓")
+                elif position_type == 'short':  # 做空持仓
+                    actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
+                    startup_entry_side = 'sell'  # 做空开仓方向
+                    print(f"  - 判断结果: 做空持仓")
+                else:  # 未知持仓类型，根据持仓数量判断（备用方案）
+                    if actual_position_size > 0:  # 做多持仓
+                        actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
+                        startup_entry_side = 'buy'  # 做多开仓方向
+                        print(f"  - 备用判断结果: 做多持仓")
+                    else:  # 做空持仓
+                        actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
+                        startup_entry_side = 'sell'  # 做空开仓方向
+                        print(f"  - 备用判断结果: 做空持仓")
+                
+                print(f"  - 设置的开仓方向: {startup_entry_side}")
+                
+                tp_order = set_take_profit_order(account, symbol, startup_entry_side, actual_position_size, actual_take_profit_price)
                 if tp_order:
                     print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
                     
@@ -812,10 +878,21 @@ def futures_trading_main():
                         previous_in_position = in_position
                         in_position = current_position is not None
                         
+                        # 记录持仓状态变化
+                        if previous_in_position != in_position:
+                            logging.info(f"📊 持仓状态变化:")
+                            logging.info(f"  - 之前状态: {'有持仓' if previous_in_position else '无持仓'}")
+                            logging.info(f"  - 当前状态: {'有持仓' if in_position else '无持仓'}")
+                            logging.info(f"  - 变化时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                            if current_position:
+                                logging.info(f"  - 持仓详情: {current_position['size']:.4f}张 @ {current_position['entry_price']:.2f} USDT")
+                        
                         # 检测仓位是否被强平
                         if previous_in_position and not in_position:
                             print(f"⚠️ 检测到仓位被强平")
                             print(f"✅ 仓位强平处理完成")
+                            logging.warning(f"⚠️ 检测到仓位被强平")
+                            logging.info(f"✅ 仓位强平处理完成")
                         
                         # 如果有持仓，检查是否需要设置止盈单
                         if current_position and current_position['size'] != 0:
@@ -831,10 +908,10 @@ def futures_trading_main():
                                 # 根据持仓数量判断方向：正数为做多，负数为做空
                                 if actual_position_size > 0:  # 做多持仓
                                     actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                                    entry_side = 'buy'  # 做多开仓方向
+                                    loop_entry_side = 'buy'  # 做多开仓方向
                                 else:  # 做空持仓
                                     actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                                    entry_side = 'sell'  # 做空开仓方向
+                                    loop_entry_side = 'sell'  # 做空开仓方向
                                 
                                 # 先检查是否已经存在止盈单
                                 has_existing_tp = check_existing_take_profit_orders(account, symbol)
@@ -842,7 +919,7 @@ def futures_trading_main():
                                 if not has_existing_tp:
                                     # 如果没有现有止盈单，尝试设置新的止盈单
                                     print(f"🔧 尝试设置止盈单: {actual_take_profit_price:.2f} USDT")
-                                    tp_order = set_take_profit_order(account, symbol, entry_side, actual_position_size, actual_take_profit_price)
+                                    tp_order = set_take_profit_order(account, symbol, loop_entry_side, actual_position_size, actual_take_profit_price)
                                     if tp_order:
                                         print(f"✅ 止盈单设置成功: {actual_take_profit_price:.2f} USDT")
                                     else:
@@ -962,8 +1039,26 @@ def futures_trading_main():
                 else:
                     ohlcv_symbol = symbol
                 
-                ohlcv_data = market_data.get_ohlcv(ohlcv_symbol)
-                signal = strategy.generate_signal(ohlcv_data)
+                ohlcv_data = market_data.get_ohlcv(ohlcv_symbol, timeframe=CONTRACT_CONFIG.get('kline_interval', '1m'))
+                raw_signal = strategy.generate_signal(ohlcv_data)
+                
+                # 记录策略信号生成详情
+                logging.info(f"🔍 策略信号生成详情:")
+                logging.info(f"  - 原始信号: {raw_signal}")
+                logging.info(f"  - 信号类型: {'做多' if raw_signal == 1 else '做空' if raw_signal == -1 else '平仓' if raw_signal == 0 else '未知'}")
+                logging.info(f"  - 当前价格: {price:.2f} USDT")
+                logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
+                logging.info(f"  - 调试模式: {strategy.debug_mode}")
+                logging.info(f"  - 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                
+                # 禁用信号0（平仓信号），只允许开仓信号
+                if raw_signal == 0:
+                    signal = 0  # 保持为0，但不执行平仓
+                    print(f"ℹ️ 策略生成平仓信号，已禁用 (raw_signal={raw_signal})")
+                    logging.info(f"ℹ️ 策略生成平仓信号，已禁用 (raw_signal={raw_signal})")
+                else:
+                    signal = raw_signal  # 允许开仓信号
+                    logging.info(f"✅ 策略信号有效，允许执行: {signal}")
                 
                 # 信号去重机制
                 current_time = time.time()
@@ -1122,6 +1217,14 @@ def futures_trading_main():
             if signal == 1 and not in_position:  # 做多信号
                 print(f"\n🚀 执行合约做多开仓...")
                 
+                # 记录开仓原因和策略信息
+                logging.info(f"🎯 开仓信号触发 - 做多开仓")
+                logging.info(f"📊 开仓原因分析:")
+                logging.info(f"  - 策略信号: {signal}")
+                logging.info(f"  - 当前价格: {price:.2f} USDT")
+                logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
+                logging.info(f"  - 调试模式: {strategy.debug_mode}")
+                
                 # 基于保证金计算合约开仓数量
                 position_size = calculate_futures_position_size()
                 position_value = position_size * price
@@ -1132,6 +1235,16 @@ def futures_trading_main():
                 take_profit_price = price * (1 + price_take_profit_pct)  # 做多触发价格
                 
                 print(f"📊 开仓详情: {position_size:.4f}张 | 价格: {price:.2f} | 止盈: {take_profit_price:.2f} | 保证金: {CONTRACT_CONFIG['fixed_margin']}USDT")
+                
+                # 记录开仓参数
+                logging.info(f"📊 开仓参数详情:")
+                logging.info(f"  - 合约数量: {position_size:.4f} 张")
+                logging.info(f"  - 开仓价格: {price:.2f} USDT")
+                logging.info(f"  - 止盈价格: {take_profit_price:.2f} USDT")
+                logging.info(f"  - 杠杆倍数: {leverage}x")
+                logging.info(f"  - 保证金: {CONTRACT_CONFIG['fixed_margin']} USDT")
+                logging.info(f"  - 保证金止盈比例: {margin_take_profit_pct*100:.1f}%")
+                logging.info(f"  - 价格止盈比例: {price_take_profit_pct*100:.3f}%")
                 
                 # 执行做多开仓
                 try:
@@ -1171,10 +1284,10 @@ def futures_trading_main():
                                 try:
                                     # 根据持仓数量判断方向：正数为做多，负数为做空
                                     if actual_position_size > 0:  # 做多持仓
-                                        entry_side = 'buy'  # 做多开仓方向
+                                        long_entry_side = 'buy'  # 做多开仓方向
                                     else:  # 做空持仓
-                                        entry_side = 'sell'  # 做空开仓方向
-                                    tp_order = set_take_profit_order(account, symbol, entry_side, actual_position_size, actual_take_profit_price)
+                                        long_entry_side = 'sell'  # 做空开仓方向
+                                    tp_order = set_take_profit_order(account, symbol, long_entry_side, actual_position_size, actual_take_profit_price)
                                     if tp_order:
                                         print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
                                     else:
@@ -1224,6 +1337,14 @@ def futures_trading_main():
             elif signal == -1 and not in_position:  # 做空信号
                 print(f"\n🔴 执行合约做空开仓...")
                 
+                # 记录开仓原因和策略信息
+                logging.info(f"🎯 开仓信号触发 - 做空开仓")
+                logging.info(f"📊 开仓原因分析:")
+                logging.info(f"  - 策略信号: {signal}")
+                logging.info(f"  - 当前价格: {price:.2f} USDT")
+                logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
+                logging.info(f"  - 调试模式: {strategy.debug_mode}")
+                
                 # 基于保证金计算合约开仓数量
                 position_size = calculate_futures_position_size()
                 position_value = position_size * price
@@ -1234,6 +1355,16 @@ def futures_trading_main():
                 take_profit_price = price * (1 - price_take_profit_pct)  # 做空触发价格
                 
                 print(f"📊 开仓详情: {position_size:.4f}张 | 价格: {price:.2f} | 止盈: {take_profit_price:.2f} | 保证金: {CONTRACT_CONFIG['fixed_margin']}USDT")
+                
+                # 记录开仓参数
+                logging.info(f"📊 开仓参数详情:")
+                logging.info(f"  - 合约数量: {position_size:.4f} 张")
+                logging.info(f"  - 开仓价格: {price:.2f} USDT")
+                logging.info(f"  - 止盈价格: {take_profit_price:.2f} USDT")
+                logging.info(f"  - 杠杆倍数: {leverage}x")
+                logging.info(f"  - 保证金: {CONTRACT_CONFIG['fixed_margin']} USDT")
+                logging.info(f"  - 保证金止盈比例: {margin_take_profit_pct*100:.1f}%")
+                logging.info(f"  - 价格止盈比例: {price_take_profit_pct*100:.3f}%")
                 
                 # 执行做空开仓
                 try:
@@ -1273,10 +1404,10 @@ def futures_trading_main():
                                 try:
                                     # 根据持仓数量判断方向：正数为做多，负数为做空
                                     if actual_position_size > 0:  # 做多持仓
-                                        entry_side = 'buy'  # 做多开仓方向
+                                        short_entry_side = 'buy'  # 做多开仓方向
                                     else:  # 做空持仓
-                                        entry_side = 'sell'  # 做空开仓方向
-                                    tp_order = set_take_profit_order(account, symbol, entry_side, actual_position_size, actual_take_profit_price)
+                                        short_entry_side = 'sell'  # 做空开仓方向
+                                    tp_order = set_take_profit_order(account, symbol, short_entry_side, actual_position_size, actual_take_profit_price)
                                     if tp_order:
                                         print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
                                     else:
@@ -1323,37 +1454,38 @@ def futures_trading_main():
                     print(f"❌ 开仓失败: {str(e)}")
                     continue
                     
-            elif signal == 0 and in_position:  # 检查是否应该平仓
-                # 检查止盈条件
-                if current_position and current_position['size'] != 0:
-                    entry_price = current_position['entry_price']
-                    position_type = strategy.position_type
-                    
-                    # 根据持仓数量判断方向
-                    if current_position['size'] > 0:  # 做多持仓
-                        # 做多止盈检查
-                        profit_pct = (price - entry_price) / entry_price
-                        if profit_pct >= strategy.take_profit:
-                            print(f"🎯 止盈触发! 盈利: {profit_pct*100:.2f}%")
-                            if _close_position(account, symbol, current_position, price, 'long'):
-                                # 更新策略状态
-                                strategy.on_position_exit('sell', price, current_position['size'], profit_pct)
-                                # 重置持仓状态
-                                in_position = False
-                                current_position = None
-                            continue
-                    else:  # 做空持仓
-                        # 做空止盈检查
-                        profit_pct = (entry_price - price) / entry_price
-                        if profit_pct >= strategy.take_profit:
-                            print(f"🎯 止盈触发! 盈利: {profit_pct*100:.2f}%")
-                            if _close_position(account, symbol, current_position, price, 'short'):
-                                # 更新策略状态
-                                strategy.on_position_exit('buy', price, current_position['size'], profit_pct)
-                                # 重置持仓状态
-                                in_position = False
-                                current_position = None
-                            continue
+            # 注释掉信号为0时的平仓逻辑，只保留止盈和强制平仓
+            # elif signal == 0 and in_position:  # 检查是否应该平仓
+            #     # 检查止盈条件
+            #     if current_position and current_position['size'] != 0:
+            #         entry_price = current_position['entry_price']
+            #         position_type = strategy.position_type
+            #         
+            #         # 根据持仓数量判断方向
+            #         if current_position['size'] > 0:  # 做多持仓
+            #             # 做多止盈检查
+            #             profit_pct = (price - entry_price) / entry_price
+            #             if profit_pct >= strategy.take_profit:
+            #                 print(f"🎯 止盈触发! 盈利: {profit_pct*100:.2f}%")
+            #                 if _close_position(account, symbol, current_position, price, 'long'):
+            #                     # 更新策略状态
+            #                     strategy.on_position_exit('sell', price, current_position['size'], profit_pct)
+            #                     # 重置持仓状态
+            #                     in_position = False
+            #                     current_position = None
+            #                 continue
+            #         else:  # 做空持仓
+            #             # 做空止盈检查
+            #             profit_pct = (entry_price - price) / entry_price
+            #             if profit_pct >= strategy.take_profit:
+            #                 print(f"🎯 止盈触发! 盈利: {profit_pct*100:.2f}%")
+            #                 if _close_position(account, symbol, current_position, price, 'short'):
+            #                     # 更新策略状态
+            #                     strategy.on_position_exit('buy', price, current_position['size'], profit_pct)
+            #                     # 重置持仓状态
+            #                     in_position = False
+            #                     current_position = None
+            #                 continue
             
             # 合约止盈和强制平仓监控
             if current_position and current_position['size'] != 0:
@@ -1366,25 +1498,56 @@ def futures_trading_main():
                 if current_pnl_pct_vs_margin >= strategy.take_profit:
                     print(f"🎯 止盈触发! 收益率: {current_pnl_pct_vs_margin*100:.2f}% | 盈亏: {current_position['unrealized_pnl']:.2f}USDT")
                     
+                    # 记录止盈平仓原因
+                    logging.info(f"🎯 止盈平仓触发")
+                    logging.info(f"📊 止盈平仓原因分析:")
+                    logging.info(f"  - 平仓类型: 止盈平仓")
+                    logging.info(f"  - 入场价格: {entry_price:.2f} USDT")
+                    logging.info(f"  - 当前价格: {price:.2f} USDT")
+                    logging.info(f"  - 持仓数量: {current_position['size']:.4f} 张")
+                    logging.info(f"  - 未实现盈亏: {current_position['unrealized_pnl']:.2f} USDT")
+                    logging.info(f"  - 保证金收益率: {current_pnl_pct_vs_margin*100:.2f}%")
+                    logging.info(f"  - 止盈阈值: {strategy.take_profit*100:.1f}%")
+                    logging.info(f"  - 杠杆倍数: {leverage}x")
+                    logging.info(f"  - 保证金: {margin_used:.2f} USDT")
+                    
                     # 执行平仓
                     try:
                         close_futures_position(account, symbol, current_position)
                         in_position = False
                         current_position = None
+                        logging.info(f"✅ 止盈平仓执行成功")
                     except Exception as e:
                         print(f"❌ 止盈平仓失败: {str(e)}")
+                        logging.error(f"❌ 止盈平仓执行失败: {str(e)}")
                     
                 # 强制平仓：亏损超过保证金时强制平仓
                 elif current_pnl_pct_vs_margin <= -1.0:  # 亏损100%保证金
                     print(f"🛑 强制平仓! 亏损: {current_pnl_pct_vs_margin*100:.2f}% | 盈亏: {current_position['unrealized_pnl']:.2f}USDT")
+                    
+                    # 记录强制平仓原因
+                    logging.info(f"🛑 强制平仓触发")
+                    logging.info(f"📊 强制平仓原因分析:")
+                    logging.info(f"  - 平仓类型: 强制平仓")
+                    logging.info(f"  - 入场价格: {entry_price:.2f} USDT")
+                    logging.info(f"  - 当前价格: {price:.2f} USDT")
+                    logging.info(f"  - 持仓数量: {current_position['size']:.4f} 张")
+                    logging.info(f"  - 未实现盈亏: {current_position['unrealized_pnl']:.2f} USDT")
+                    logging.info(f"  - 保证金亏损率: {current_pnl_pct_vs_margin*100:.2f}%")
+                    logging.info(f"  - 强制平仓阈值: -100%")
+                    logging.info(f"  - 杠杆倍数: {leverage}x")
+                    logging.info(f"  - 保证金: {margin_used:.2f} USDT")
+                    logging.info(f"  - 风险等级: 极高 (亏损超过保证金)")
                     
                     # 执行强制平仓
                     try:
                         close_futures_position(account, symbol, current_position)
                         in_position = False
                         current_position = None
+                        logging.info(f"✅ 强制平仓执行成功")
                     except Exception as e:
                         print(f"❌ 强制平仓失败: {str(e)}")
+                        logging.error(f"❌ 强制平仓执行失败: {str(e)}")
             
             # 更新持仓监控（减少重复调用）
             if loop_count % 5 == 0:  # 每5次循环更新一次，减少重复
@@ -1423,6 +1586,21 @@ def futures_trading_main():
             
             # 更新循环计数
             loop_count += 1
+            
+            # 定期记录程序状态到日志
+            if loop_count % 100 == 0:  # 每100次循环记录一次详细状态
+                logging.info(f"📊 程序运行状态记录 (循环 {loop_count}):")
+                logging.info(f"  - 当前时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                logging.info(f"  - 持仓状态: {'有持仓' if in_position else '无持仓'}")
+                logging.info(f"  - 当前价格: {price:.2f} USDT")
+                if in_position and current_position:
+                    logging.info(f"  - 持仓详情: {current_position['size']:.4f}张 @ {current_position['entry_price']:.2f} USDT")
+                    logging.info(f"  - 未实现盈亏: {current_position['unrealized_pnl']:.2f} USDT")
+                    margin_used = CONTRACT_CONFIG["fixed_margin"]
+                    pnl_pct = (current_position['unrealized_pnl'] / margin_used) * 100
+                    logging.info(f"  - 保证金收益率: {pnl_pct:.2f}%")
+                logging.info(f"  - 策略状态: {strategy.__class__.__name__}")
+                logging.info(f"  - 调试模式: {strategy.debug_mode}")
             
             if loop_count % 30 == 0:  # 每30次循环显示一次状态（1秒间隔下约30秒显示一次）
                 if in_position and current_position:
@@ -1547,7 +1725,7 @@ def main():
             else:
                 ohlcv_symbol = symbol
             
-            ohlcv_data = market_data.get_ohlcv(ohlcv_symbol)
+            ohlcv_data = market_data.get_ohlcv(ohlcv_symbol, timeframe=CONTRACT_CONFIG.get('kline_interval', '1m'))
             signal = strategy.generate_signal(ohlcv_data)
             
             # 只在有信号时打印详细信息
@@ -1721,8 +1899,8 @@ def main():
                     except Exception as e:
                         print(f"❌ {stop_type}执行失败: {str(e)}")
                         continue
-                
-                # 更新持仓监控
+            
+            # 更新持仓监控
                 position_data = {
                     "size": size,
                     "entry_price": entry_price,

@@ -479,3 +479,81 @@ class ContractDailyTradingStrategy:
             "leverage": self.leverage,
             "margin_mode": self.margin_mode
         }
+    
+    def enable_high_precision_mode(self):
+        """
+        启用高精度模式 - 适配25%保证金止盈目标
+        
+        在50倍杠杆下，25%的保证金止盈 = 0.5%的价格止盈
+        需要更精确的信号生成条件来避免误开仓
+        """
+        # 保存当前参数（用于后续恢复）
+        if not hasattr(self, 'high_precision_params'):
+            self.high_precision_params = {
+                'rsi_oversold': self.rsi_oversold,
+                'rsi_overbought': self.rsi_overbought,
+                'min_volume_ratio': self.min_volume_ratio,
+                'price_pullback': self.price_pullback,
+                'ma_short': self.ma_short,
+                'ma_long': self.ma_long,
+                'take_profit': self.take_profit
+            }
+        
+        # 调整RSI阈值，提高信号精度
+        self.rsi_oversold = 35.0      # 从30.0提高到35.0（更保守）
+        self.rsi_overbought = 65.0    # 从70.0降低到65.0（更保守）
+        
+        # 提高成交量要求，确保趋势明确
+        self.min_volume_ratio = 2.0   # 从1.5提高到2.0
+        
+        # 提高价格回调要求，避免假突破
+        self.price_pullback = 0.02    # 从0.01提高到0.02（2%回调）
+        
+        # 调整MA周期，提高趋势判断准确性
+        self.ma_short = 8             # 从5提高到8
+        self.ma_long = 25             # 从20提高到25
+        
+        # 设置止盈为0.5%（50倍杠杆 = 25%保证金止盈）
+        self.take_profit = 0.005      # 0.5%
+        
+        logger.info(f"🎯 高精度模式已启用 - 适配25%保证金止盈目标")
+        logger.info(f"📊 参数调整详情:")
+        logger.info(f"  RSI超卖阈值: {self.high_precision_params['rsi_oversold']} → {self.rsi_oversold} (更保守)")
+        logger.info(f"  RSI超买阈值: {self.high_precision_params['rsi_overbought']} → {self.rsi_overbought} (更保守)")
+        logger.info(f"  最小成交量比例: {self.high_precision_params['min_volume_ratio']} → {self.min_volume_ratio} (更严格)")
+        logger.info(f"  价格回调比例: {self.high_precision_params['price_pullback']*100:.1f}% → {self.price_pullback*100:.1f}% (更严格)")
+        logger.info(f"  短期MA: {self.high_precision_params['ma_short']} → {self.ma_long} (更稳定)")
+        logger.info(f"  长期MA: {self.high_precision_params['ma_long']} → {self.ma_long} (更稳定)")
+        logger.info(f"  止盈设置: {self.take_profit*100:.3f}% (50倍杠杆 = 25%保证金止盈)")
+        logger.info(f"🎯 目标: 在50倍杠杆下实现25%的保证金盈利目标")
+    
+    def restore_high_precision_params(self):
+        """恢复高精度模式前的参数配置"""
+        if hasattr(self, 'high_precision_params'):
+            self.rsi_oversold = self.high_precision_params['rsi_oversold']
+            self.rsi_overbought = self.high_precision_params['rsi_overbought']
+            self.min_volume_ratio = self.high_precision_params['min_volume_ratio']
+            self.price_pullback = self.high_precision_params['price_pullback']
+            self.ma_short = self.high_precision_params['ma_short']
+            self.ma_long = self.high_precision_params['ma_long']
+            self.take_profit = self.high_precision_params['take_profit']
+            
+            logger.info(f"📊 已恢复高精度模式前的参数配置:")
+            logger.info(f"  RSI超卖阈值: {self.rsi_oversold}")
+            logger.info(f"  RSI超买阈值: {self.rsi_overbought}")
+            logger.info(f"  最小成交量比例: {self.min_volume_ratio}")
+            logger.info(f"  价格回调比例: {self.price_pullback*100:.1f}%")
+            logger.info(f"  短期MA: {self.ma_short}")
+            logger.info(f"  长期MA: {self.ma_long}")
+            logger.info(f"  止盈设置: {self.take_profit*100:.1f}%")
+        else:
+            logger.warning(f"⚠️ 未找到高精度模式参数，无法恢复")
+    
+    def get_strategy_mode(self):
+        """获取当前策略模式"""
+        if hasattr(self, 'high_precision_params') and self.take_profit == 0.005:
+            return "高精度模式 (25%保证金止盈)"
+        elif self.debug_mode:
+            return "调试模式"
+        else:
+            return "标准模式"

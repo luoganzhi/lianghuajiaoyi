@@ -149,15 +149,18 @@ class OKXExecutor(BaseExecutor):
                     if position['symbol'] == symbol and position['contracts'] > 0:
                         logger.info(f"获取{symbol}持仓成功 (CCXT)")
                         
+                        # 根据持仓数量确定持仓类型
+                        position_type = 'short' if position['contracts'] < 0 else 'long' if position['contracts'] > 0 else 'unknown'
+                        
                         return {
                             'symbol': symbol,
-                            'size': float(position['contracts']),  # 保持原始正负号
+                            'size': abs(float(position['contracts'])),  # 使用绝对值作为持仓数量
                             'entry_price': float(position['entryPrice']) if position['entryPrice'] else 0.0,
                             'unrealized_pnl': float(position['unrealizedPnl']) if position['unrealizedPnl'] else 0.0,
                             'leverage': float(position['leverage']) if position['leverage'] else 1.0,
                             'margin_mode': position.get('marginMode', 'isolated'),
                             'posSide': position.get('side', ''),  # 持仓方向
-                            'position_type': position.get('side', 'unknown'),  # 持仓类型
+                            'position_type': position_type,  # 根据持仓数量确定的持仓类型
                             'info': position
                         }
             
@@ -182,15 +185,18 @@ class OKXExecutor(BaseExecutor):
                         pos_side = position.get('posSide', '')
                         position_type = 'long' if pos_side == 'long' else 'short' if pos_side == 'short' else 'unknown'
                         
+                        # 根据持仓数量确定持仓类型
+                        position_type = 'short' if pos_size < 0 else 'long' if pos_size > 0 else 'unknown'
+                        
                         return {
                             'symbol': symbol,
-                            'size': pos_size,  # 保持原始正负号
+                            'size': abs(pos_size),  # 使用绝对值作为持仓数量
                             'entry_price': float(position['avgPx']) if position['avgPx'] else 0.0,
                             'unrealized_pnl': float(position['upl']) if position['upl'] else 0.0,
                             'leverage': float(position['lever']) if position['lever'] else 1.0,
                             'margin_mode': position['mgnMode'] if position['mgnMode'] else 'isolated',
                             'posSide': pos_side,  # 添加持仓方向
-                            'position_type': position_type,  # 添加持仓类型
+                            'position_type': position_type,  # 根据持仓数量确定的持仓类型
                             'info': position
                         }
                 
