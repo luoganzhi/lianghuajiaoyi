@@ -1,0 +1,169 @@
+# Python 虚拟环境
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Python 字节码文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 分发/打包
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# 单元测试/覆盖率报告
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+
+# 环境变量
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# 项目特定文件
+# 日志文件
+logs/
+*.log
+
+# 配置文件备份
+*_backup_*.py
+*_backup_*.json
+*_backup_*.yaml
+
+# 数据文件
+data/
+*.csv
+*.xlsx
+*.json
+*.pickle
+*.pkl
+
+# 临时文件
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# IDE 配置文件
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 操作系统文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 交易相关
+# API密钥文件（如果有的话）
+api_keys.txt
+secrets.json
+credentials.json
+
+# 回测结果
+backtest_results/
+backtest_*.csv
+backtest_*.json
+
+# 策略参数备份
+strategy_backup_*.py
+strategy_backup_*.json
+
+# 测试文件
+test_*.py
+*_test.py
+*_example.py
+
+# 文档备份
+*_SUMMARY.md
+*_FIX.md
+*_UPDATE.md
+*_USAGE.md
+
+# 其他
+*.bak
+*.old
+*.orig
+*.rej
