@@ -10,7 +10,21 @@ load_dotenv()
 
 # 添加项目根目录到Python路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
+project_root = os.path.dirname(current_dir)  # src的父目录，即项目根目录
+
+# 确保项目根目录是正确的
+if not os.path.exists(os.path.join(project_root, 'src')):
+    # 如果找不到src目录，说明project_root计算错误，重新计算
+    project_root = os.getcwd()  # 使用当前工作目录作为项目根目录
+
+# 最终验证项目根目录
+if not os.path.exists(os.path.join(project_root, 'src')):
+    print(f"❌ 无法找到src目录，请检查项目结构")
+    print(f"📁 当前工作目录: {os.getcwd()}")
+    print(f"📁 计算的project_root: {project_root}")
+    sys.exit(1)
+
+print(f"✅ 项目根目录: {project_root}")
 sys.path.insert(0, project_root)
 
 # 配置日志
@@ -20,6 +34,10 @@ def setup_logging():
     log_dir = os.path.join(project_root, 'logs')
     os.makedirs(log_dir, exist_ok=True)
     
+    # 清除之前的日志配置
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
     # 配置根日志记录器
     logging.basicConfig(
         level=logging.INFO,
@@ -27,7 +45,8 @@ def setup_logging():
         handlers=[
             logging.FileHandler(os.path.join(log_dir, 'main.log'), encoding='utf-8'),
             logging.StreamHandler()
-        ]
+        ],
+        force=True  # 强制重新配置
     )
     
     # 确保所有模块的日志记录器都使用相同的配置
@@ -44,9 +63,8 @@ def setup_logging():
         if not logger.handlers:  # 如果该日志记录器没有处理器
             logger.handlers = root_logger.handlers[:]  # 复制根日志记录器的处理器
             logger.propagate = False  # 防止重复输出
-
-# 初始化日志
-setup_logging()
+    
+    print(f"✅ 日志配置完成，日志文件: {os.path.join(log_dir, 'main.log')}")
 
 from src.config.config import *
 from src.data.market_data import MarketDataFetcher
@@ -59,6 +77,9 @@ from src.risk.stop_manager import StopManager
 from src.strategies.daily_trading_strategy import DailyTradingStrategy
 from src.strategies.contract_daily_trading_strategy import ContractDailyTradingStrategy
 # from src.monitor.report_generator import ReportGenerator  # 暂时注释掉，合约交易不需要
+
+# 初始化日志（在所有模块导入后）
+setup_logging()
 
 # 添加合约交易方法
 def execute_futures_trade(account, symbol, side, amount, leverage=10, order_type="market", take_profit_price=None):
@@ -271,23 +292,23 @@ def check_existing_take_profit_orders(account, symbol):
                     return True
             
             print(f"🔍 未发现现有止盈单")
-        return False
+            return False
         else:
             print(f"⚠️ 查询订单失败: {response}")
-        return False
+            return False
             
     except Exception as e:
         print(f"❌ 查询现有订单异常: {e}")
         return False
 
-def set_take_profit_order(account, symbol, side, amount, take_profit_price):
+def set_take_profit_order(account, symbol, position_type, amount, take_profit_price):
     """
     设置止盈订单
     
     Args:
         account: 交易账户实例
         symbol: 交易对
-        side: 交易方向 ('buy' 或 'sell')
+        position_type: 持仓类型 ('long' 或 'short')
         amount: 合约数量
         take_profit_price: 止盈价格
     
@@ -310,17 +331,20 @@ def set_take_profit_order(account, symbol, side, amount, take_profit_price):
         
         print(f"🔧 止盈订单设置:")
         print(f"  交易对: {symbol_for_trade}")
-        print(f"  开仓方向: {side}")
+        print(f"  持仓类型: {position_type}")
         print(f"  止盈数量: {contract_sheets} 张")
         print(f"  止盈价格: {take_profit_price:.2f} USDT")
         
-        # 使用OKX原生API设置止盈订单
-        # 对于做多，止盈是卖出；对于做空，止盈是买入
-        # side参数是开仓方向，需要转换为平仓方向
-        if side == 'buy':  # 做多开仓
+        # 根据持仓类型确定止盈方向
+        # 做多持仓：止盈是卖出(sell)平仓
+        # 做空持仓：止盈是买入(buy)平仓
+        if position_type == 'long':  # 做多持仓
             tp_side = 'sell'  # 做多平仓
-        else:  # 做空开仓
+        elif position_type == 'short':  # 做空持仓
             tp_side = 'buy'   # 做空平仓
+        else:
+            print(f"❌ 无效的持仓类型: {position_type}")
+            return None
         
         print(f"  实际止盈方向: {tp_side}")
         
@@ -537,7 +561,7 @@ def _close_position(account, symbol, position_info, price, position_type):
             print(f"  保证金收益率: {pnl_pct_vs_margin:.2f}%")
             print(f"  保证金: {margin_used} USDT")
             
-    return True
+            return True
         else:
             print("❌ 合约平仓失败")
             return False
@@ -553,31 +577,48 @@ def clear_previous_data():
     
     print("🧹 清理之前的数据...")
     
-    # 清理日志文件
+    # 清理日志文件（保留main.log）
     log_dirs = ["logs", "reports"]
     for log_dir in log_dirs:
         if os.path.exists(log_dir):
             try:
-                shutil.rmtree(log_dir)
-                print(f"✅ 清理 {log_dir} 目录完成")
+                # 保留main.log文件
+                main_log_file = os.path.join(log_dir, 'main.log')
+                if os.path.exists(main_log_file):
+                    # 备份main.log
+                    backup_log_file = os.path.join(log_dir, 'main_backup.log')
+                    shutil.copy2(main_log_file, backup_log_file)
+                    print(f"✅ 备份日志文件: {backup_log_file}")
+                
+                # 删除目录内容，但保留目录
+                for item in os.listdir(log_dir):
+                    item_path = os.path.join(log_dir, item)
+                    if os.path.isfile(item_path):
+                        os.remove(item_path)
+                    elif os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                
+                print(f"✅ 清理 {log_dir} 目录内容完成")
             except Exception as e:
                 print(f"⚠️ 清理 {log_dir} 目录失败: {e}")
         
-        # 重新创建目录
+        # 确保目录存在
         try:
             os.makedirs(log_dir, exist_ok=True)
-            print(f"✅ 重建 {log_dir} 目录完成")
+            print(f"✅ 确保 {log_dir} 目录存在")
         except Exception as e:
-            print(f"⚠️ 重建 {log_dir} 目录失败: {e}")
+            print(f"⚠️ 创建 {log_dir} 目录失败: {e}")
     
-    # 清理临时文件
+    # 清理临时文件（排除logs目录中的文件）
     temp_files = ["*.log", "*.tmp", "*.cache"]
     for pattern in temp_files:
         try:
             import glob
             for file in glob.glob(pattern):
-                os.remove(file)
-                print(f"✅ 删除临时文件: {file}")
+                # 跳过logs目录中的文件
+                if not file.startswith('logs/') and not os.path.dirname(file) == 'logs':
+                    os.remove(file)
+                    print(f"✅ 删除临时文件: {file}")
         except Exception as e:
             pass
     
@@ -597,6 +638,9 @@ def futures_trading_main():
     
     # 清理之前的数据
     clear_previous_data()
+    
+    # 重新配置日志（清理后重新设置）
+    setup_logging()
     
     # 初始化循环计数器
     loop_count = 0
@@ -685,7 +729,7 @@ def futures_trading_main():
         strategy = ContractDailyTradingStrategy(debug_mode=True, kline_interval=kline_interval)
         
         # 🎯 启用高精度模式 - 25%保证金止盈
-        strategy.enable_high_precision_mode()
+        # strategy.enable_high_precision_mode()
         
         # 记录策略初始化详情
         logging.info(f"📊 策略初始化完成:")
@@ -814,7 +858,8 @@ def futures_trading_main():
                 
                 print(f"  - 设置的开仓方向: {startup_entry_side}")
                 
-                tp_order = set_take_profit_order(account, symbol, startup_entry_side, actual_position_size, actual_take_profit_price)
+                # 传递持仓类型而不是开仓方向
+                tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
                 if tp_order:
                     print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
                     
@@ -875,43 +920,86 @@ def futures_trading_main():
                     # 更新持仓信息
                     try:
                         current_position = get_futures_position(account, symbol, strategy)
-                        previous_in_position = in_position
-                        in_position = current_position is not None
                         
-                        # 记录持仓状态变化
-                        if previous_in_position != in_position:
-                            logging.info(f"📊 持仓状态变化:")
-                            logging.info(f"  - 之前状态: {'有持仓' if previous_in_position else '无持仓'}")
-                            logging.info(f"  - 当前状态: {'有持仓' if in_position else '无持仓'}")
-                            logging.info(f"  - 变化时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                            if current_position:
-                                logging.info(f"  - 持仓详情: {current_position['size']:.4f}张 @ {current_position['entry_price']:.2f} USDT")
+                        # 只有在成功获取到持仓信息时才更新状态
+                        if current_position is not None:
+                            previous_in_position = in_position
+                            
+                            # 检查持仓数量是否为0
+                            if float(current_position.get('size', 0)) == 0:
+                                # 持仓数量为0，更新为无持仓状态
+                                in_position = False
+                                if previous_in_position:
+                                    logging.info(f"📊 持仓状态变化: 有持仓 -> 无持仓 (持仓数量为0)")
+                            else:
+                                # 持仓数量不为0，更新为有持仓状态
+                                in_position = True
+                                if not previous_in_position:
+                                    logging.info(f"📊 持仓状态变化: 无持仓 -> 有持仓")
+                            
+                            # 记录持仓状态变化
+                            if previous_in_position != in_position:
+                                logging.info(f"📊 持仓状态变化:")
+                                logging.info(f"  - 之前状态: {'有持仓' if previous_in_position else '无持仓'}")
+                                logging.info(f"  - 当前状态: {'有持仓' if in_position else '无持仓'}")
+                                logging.info(f"  - 变化时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                                if in_position:
+                                    logging.info(f"  - 持仓详情: {current_position['size']:.4f}张 @ {current_position['entry_price']:.2f} USDT")
+                                else:
+                                    logging.info(f"  - 持仓详情: 无持仓 (数量为0)")
+                        else:
+                            # 如果查询失败，保持原有状态不变
+                            logging.warning(f"⚠️ 持仓查询失败，保持原有状态: {'有持仓' if in_position else '无持仓'}")
+                            # 不更新 in_position，保持原样
                         
-                        # 检测仓位是否被强平
-                        if previous_in_position and not in_position:
-                            print(f"⚠️ 检测到仓位被强平")
-                            print(f"✅ 仓位强平处理完成")
-                            logging.warning(f"⚠️ 检测到仓位被强平")
-                            logging.info(f"✅ 仓位强平处理完成")
+                        # 只有在成功查询到无持仓时才判断为强平
+                        if current_position is None and in_position:
+                            print(f"⚠️ 检测到持仓状态变化: 有持仓 -> 无持仓")
+                            print(f"🔍 正在验证是否真的被强平...")
+                            logging.warning(f"⚠️ 检测到持仓状态变化: 有持仓 -> 无持仓")
+                            
+                            # 再次尝试获取持仓信息进行验证
+                            try:
+                                verification_position = get_futures_position(account, symbol, strategy)
+                                if verification_position and float(verification_position.get('size', 0)) != 0:
+                                    print(f"✅ 验证结果: 持仓仍然存在，不是强平")
+                                    logging.info(f"✅ 验证结果: 持仓仍然存在，不是强平")
+                                    # 恢复状态
+                                    in_position = True
+                                    current_position = verification_position
+                                else:
+                                    print(f"⚠️ 验证结果: 确认仓位被强平")
+                                    logging.warning(f"⚠️ 验证结果: 确认仓位被强平")
+                                    # 只有在确认无持仓时才更新状态
+                                    in_position = False
+                            except Exception as verify_e:
+                                print(f"⚠️ 验证持仓时出错: {str(verify_e)}")
+                                logging.warning(f"⚠️ 验证持仓时出错: {str(verify_e)}")
+                                # 验证失败时保持原有状态
+                                print(f"🔄 验证失败，保持原有持仓状态: {'有持仓' if in_position else '无持仓'}")
                         
                         # 如果有持仓，检查是否需要设置止盈单
                         if current_position and current_position['size'] != 0:
                             try:
                                 actual_entry_price = current_position['entry_price']
                                 actual_position_size = current_position['size']
-                                position_type = current_position.get('posSide', 'long')
+                                
+                                # 直接使用持仓查询响应中的position_type字段
+                                position_type = current_position.get('position_type', 'unknown')
+                                print(f"🔍 持仓信息: size={actual_position_size}, position_type={position_type}")
                                 
                                 # 计算止盈价格
                                 margin_take_profit_pct = CONTRACT_CONFIG['take_profit_pct']  # 保证金止盈比例：10%
                                 price_take_profit_pct = margin_take_profit_pct / leverage  # 价格止盈比例
                                 
-                                # 根据持仓数量判断方向：正数为做多，负数为做空
-                                if actual_position_size > 0:  # 做多持仓
+                                # 根据持仓类型计算止盈价格
+                                if position_type == 'long':  # 做多持仓
                                     actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                                    loop_entry_side = 'buy'  # 做多开仓方向
-                                else:  # 做空持仓
+                                elif position_type == 'short':  # 做空持仓
                                     actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                                    loop_entry_side = 'sell'  # 做空开仓方向
+                                else:
+                                    print(f"❌ 未知的持仓类型: {position_type}")
+                                    continue
                                 
                                 # 先检查是否已经存在止盈单
                                 has_existing_tp = check_existing_take_profit_orders(account, symbol)
@@ -919,7 +1007,8 @@ def futures_trading_main():
                                 if not has_existing_tp:
                                     # 如果没有现有止盈单，尝试设置新的止盈单
                                     print(f"🔧 尝试设置止盈单: {actual_take_profit_price:.2f} USDT")
-                                    tp_order = set_take_profit_order(account, symbol, loop_entry_side, actual_position_size, actual_take_profit_price)
+                                    print(f"🔍 使用持仓类型: {position_type}")
+                                    tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
                                     if tp_order:
                                         print(f"✅ 止盈单设置成功: {actual_take_profit_price:.2f} USDT")
                                     else:
@@ -1282,12 +1371,9 @@ def futures_trading_main():
                                 
                                 # 根据持仓方向设置止盈订单
                                 try:
-                                    # 根据持仓数量判断方向：正数为做多，负数为做空
-                                    if actual_position_size > 0:  # 做多持仓
-                                        long_entry_side = 'buy'  # 做多开仓方向
-                                    else:  # 做空持仓
-                                        long_entry_side = 'sell'  # 做空开仓方向
-                                    tp_order = set_take_profit_order(account, symbol, long_entry_side, actual_position_size, actual_take_profit_price)
+                                    # 根据持仓数量判断持仓类型
+                                    position_type = 'long' if actual_position_size > 0 else 'short'
+                                    tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
                                     if tp_order:
                                         print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
                                     else:
@@ -1402,12 +1488,9 @@ def futures_trading_main():
                                 
                                 # 根据持仓方向设置止盈订单
                                 try:
-                                    # 根据持仓数量判断方向：正数为做多，负数为做空
-                                    if actual_position_size > 0:  # 做多持仓
-                                        short_entry_side = 'buy'  # 做多开仓方向
-                                    else:  # 做空持仓
-                                        short_entry_side = 'sell'  # 做空开仓方向
-                                    tp_order = set_take_profit_order(account, symbol, short_entry_side, actual_position_size, actual_take_profit_price)
+                                    # 根据持仓数量判断持仓类型
+                                    position_type = 'long' if actual_position_size > 0 else 'short'
+                                    tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
                                     if tp_order:
                                         print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
                                     else:
@@ -1625,6 +1708,9 @@ def main():
     # 清理之前的数据
     clear_previous_data()
     
+    # 重新配置日志（清理后重新设置）
+    setup_logging()
+    
     # 1. 选择API信息
     if IS_SIMULATED:
         api_key = SIM_API_KEY
@@ -1782,19 +1868,19 @@ def main():
                 
                 if position_size >= MIN_POSITION_SIZE and risk_manager.check_position_limit(symbol, position_size, capital):
                     try:
-                    order = account.place_order(symbol, order_type="market", side="buy", amount=position_size)
+                        order = account.place_order(symbol, order_type="market", side="buy", amount=position_size)
                         print(f"✅ 买入成功! 订单ID: {order.get('id', 'N/A')}")
                         in_position = True
                     
-                    # 记录交易
+                        # 记录交易
                         trade_data = {
-                        "timestamp": datetime.now(),
-                        "symbol": symbol,
-                        "side": "buy",
-                        "size": position_size,
-                        "price": price,
-                        "value": position_value,
-                        "type": "entry",
+                            "timestamp": datetime.now(),
+                            "symbol": symbol,
+                            "side": "buy",
+                            "size": position_size,
+                            "price": price,
+                            "value": position_value,
+                            "type": "entry",
                             "order_id": order.get("id", ""),
                             "status": order.get("status", "")
                         }
@@ -1860,11 +1946,11 @@ def main():
                     print(f"\n🚨 {stop_type}触发!")
                     
                     try:
-                    order = account.place_order(symbol, order_type="market", side="sell", amount=size)
+                        order = account.place_order(symbol, order_type="market", side="sell", amount=size)
                         print(f"✅ {stop_type}执行成功! 订单ID: {order.get('id', 'N/A')}")
                     
-                    # 计算收益
-                    profit = (current_price - entry_price) * size
+                        # 计算收益
+                        profit = (current_price - entry_price) * size
                         profit_pct = (profit / (entry_price * size)) * 100
                         
                         print(f"📊 {stop_type}详情:")
