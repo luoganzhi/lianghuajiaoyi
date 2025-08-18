@@ -1,0 +1,16 @@
+# OKX API 配置示例
+# 复制此文件为 .env 并填入真实的API密钥
+
+# 模拟盘API
+SIM_API_KEY=your_sim_api_key_here
+SIM_API_SECRET=your_sim_api_secret_here
+SIM_API_PASSWORD=your_sim_api_password_here
+
+# 实盘API
+REAL_API_KEY=your_real_api_key_here
+REAL_API_SECRET=your_real_api_secret_here
+REAL_API_PASSWORD=your_real_api_password_here
+
+# 其他配置
+PROXY=http://127.0.0.1:7890
+IS_SIMULATED=false
