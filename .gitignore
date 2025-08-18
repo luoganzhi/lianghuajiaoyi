@@ -77,7 +77,12 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-config/config.py
+
+# 配置文件
+config/
+src/config/
+*.config.py
+config.py
 
 # Spyder
 .spyderproject
