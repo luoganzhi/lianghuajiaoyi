@@ -79,10 +79,10 @@ env.bak/
 venv.bak/
 
 # 配置文件
-config/
-src/config/
+/config/  # 只忽略根目录下的config文件夹
+# src/config/  # 注释掉，允许跟踪配置文件
 *.config.py
-config.py
+# config.py  # 注释掉，允许跟踪配置文件
 
 # Spyder
 .spyderproject
