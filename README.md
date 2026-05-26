@@ -116,6 +116,7 @@ python src/main.py
 ```
 
 实盘运行需要二次确认：`.env` 中必须同时设置 `IS_SIMULATED=false` 和 `ALLOW_REAL_TRADING=true`，否则主程序会拒绝启动实盘模式。
+合约策略调试模式由 `CONTRACT_DEBUG_MODE` 控制，实盘建议保持 `false`。
 
 ## 开发进展
 

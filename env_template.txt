@@ -31,6 +31,9 @@ IS_SIMULATED=true
 # 实盘二次确认；只有 IS_SIMULATED=false 且此项为 true 时才允许实盘启动
 ALLOW_REAL_TRADING=false
 
+# 合约策略调试模式；生产/实盘建议保持 false
+CONTRACT_DEBUG_MODE=false
+
 # ========================================
 # 使用说明
 # ========================================

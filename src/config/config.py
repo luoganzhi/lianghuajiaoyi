@@ -108,4 +108,5 @@ CONTRACT_CONFIG = {
     'leverage': 50,      # 杠杆倍数
     'kline_interval': '1m',  # K线周期：1m(1分钟), 5m(5分钟), 15m(15分钟), 1h(1小时), 4h(4小时), 1d(1天)
     'take_profit_pct': 0.1,  # 保证金止盈比例：10%
+    'debug_mode': os.getenv('CONTRACT_DEBUG_MODE', 'false').lower() == 'true',
 }

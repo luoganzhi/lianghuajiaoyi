@@ -3,6 +3,14 @@ import logging
 from src.config.config import CONTRACT_CONFIG
 
 
+def _is_short_position(position_info):
+    position_type = position_info.get('position_type')
+    if position_type in ('long', 'short'):
+        return position_type == 'short'
+
+    return position_info.get('size', 0) < 0
+
+
 def execute_futures_trade(account, symbol, side, amount, leverage=10, order_type="market", take_profit_price=None):
     """
     执行合约交易
@@ -418,8 +426,10 @@ def close_futures_position(account, symbol, position_info):
     try:
         if position_info and position_info['size'] != 0:
             # 平仓方向与开仓相反
-            # 根据持仓数量判断：正数为做多，负数为做空
-            close_side = 'sell' if position_info['size'] > 0 else 'buy'
+            is_short = _is_short_position(position_info)
+            close_side = 'buy' if is_short else 'sell'
+            pos_side = 'short' if is_short else 'long'
+            close_amount = abs(position_info['size'])
             
             # 合约交易对格式转换
             # 从 BTC-USDT-SWAP 转换为 BTC-USDT
@@ -436,11 +446,11 @@ def close_futures_position(account, symbol, position_info):
                 symbol=symbol_for_trade,
                 type="market",
                 side=close_side,
-                amount=position_info['size'],
+                amount=close_amount,
                 params={
                     'instType': 'SWAP',
                     'tdMode': 'isolated',
-                    'posSide': 'short' if close_side == 'sell' else 'long'
+                    'posSide': pos_side
                 }
             )
             
@@ -461,16 +471,17 @@ def _close_position(account, symbol, position_info, price, position_type):
             print(f"  订单ID: {order.get('id', 'N/A')}")
             print(f"  状态: {order.get('status', 'N/A')}")
             print(f"  平仓价格: {price:.2f} USDT")
-            print(f"  平仓数量: {position_info['size']:.4f} 张")
-            print(f"  交易方向: {'做多平仓' if position_info['size'] > 0 else '做空平仓'}")
+            print(f"  平仓数量: {abs(position_info['size']):.4f} 张")
+            is_short = _is_short_position(position_info)
+            print(f"  交易方向: {'做空平仓' if is_short else '做多平仓'}")
             
             # 计算实际盈亏
             entry_price = position_info['entry_price']
-            # 根据持仓数量判断方向
-            if position_info['size'] > 0:  # 做多持仓
-                actual_pnl = (price - entry_price) * position_info['size']
-            else:  # 做空持仓
-                actual_pnl = (entry_price - price) * position_info['size']
+            position_size = abs(position_info['size'])
+            if is_short:
+                actual_pnl = (entry_price - price) * position_size
+            else:
+                actual_pnl = (price - entry_price) * position_size
             
             # 基于保证金计算收益率
             margin_used = CONTRACT_CONFIG["fixed_margin"]  # 固定保证金

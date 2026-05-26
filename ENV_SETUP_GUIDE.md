@@ -42,6 +42,7 @@ REAL_API_PASSWORD=your_real_api_password_here
 PROXY=http://127.0.0.1:7890
 IS_SIMULATED=true
 ALLOW_REAL_TRADING=false
+CONTRACT_DEBUG_MODE=false
 ```
 
 ### **3. 验证配置**

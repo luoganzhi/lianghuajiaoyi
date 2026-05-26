@@ -248,9 +248,10 @@ def futures_trading_main():
             return
         
         trade_monitor = TradeMonitor()
-        # 使用新的合约交易策略 - 启用调试模式以降低信号生成条件，从配置文件读取K线周期
+        # 使用新的合约交易策略，从配置文件读取K线周期和调试模式
         kline_interval = CONTRACT_CONFIG.get('kline_interval', '1m')  # 默认1分钟
-        strategy = ContractDailyTradingStrategy(debug_mode=True, kline_interval=kline_interval)
+        debug_mode = CONTRACT_CONFIG.get('debug_mode', False)
+        strategy = ContractDailyTradingStrategy(debug_mode=debug_mode, kline_interval=kline_interval)
         
         # 🎯 启用高精度模式 - 25%保证金止盈
         # strategy.enable_high_precision_mode()
