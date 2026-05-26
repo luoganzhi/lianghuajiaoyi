@@ -1,12 +1,13 @@
 import logging
 from dataclasses import dataclass
 
-from src.config.config import CONTRACT_CONFIG, IS_SIMULATED, PROXY
+from src.config.config import CONTRACT_CONFIG, IS_SIMULATED, PROXY, TRADING_CONFIG
 from src.data.market_data import MarketDataFetcher
 from src.execution.okx_executor import OKXExecutor
 from src.monitor.trade_monitor import TradeMonitor
-from src.strategies.contract_daily_trading_strategy import ContractDailyTradingStrategy
 from src.trading.environment import get_trading_credentials
+from src.trading.strategy_factory import create_futures_strategy
+from src.trading.symbols import normalize_futures_symbol
 
 
 @dataclass
@@ -14,17 +15,19 @@ class FuturesComponents:
     market_data: MarketDataFetcher
     account: OKXExecutor
     trade_monitor: TradeMonitor
-    strategy: ContractDailyTradingStrategy
+    strategy: object
 
 
-def initialize_futures_components():
+def initialize_futures_components(symbol=None, strategy_name=None):
     """初始化合约交易所需组件。"""
     print("正在初始化交易组件...")
     api_key, api_secret, api_password = get_trading_credentials()
+    symbol = normalize_futures_symbol(symbol or TRADING_CONFIG.get('symbol') or CONTRACT_CONFIG['default_symbol'])
+    strategy_name = strategy_name or TRADING_CONFIG.get('strategy') or 'contract_daily'
 
     proxy_configs = _proxy_candidates()
 
-    market_data = _connect_market_data(proxy_configs, api_key, api_secret)
+    market_data = _connect_market_data(proxy_configs, api_key, api_secret, symbol)
     if not market_data:
         print("❌ 所有代理都无法连接，请检查网络设置")
         return None
@@ -35,9 +38,7 @@ def initialize_futures_components():
         return None
 
     trade_monitor = TradeMonitor()
-    kline_interval = CONTRACT_CONFIG.get('kline_interval', '1m')
-    debug_mode = CONTRACT_CONFIG.get('debug_mode', False)
-    strategy = ContractDailyTradingStrategy(debug_mode=debug_mode, kline_interval=kline_interval)
+    strategy = create_futures_strategy(strategy_name)
 
     # 🎯 启用高精度模式 - 25%保证金止盈
     # strategy.enable_high_precision_mode()
@@ -63,7 +64,7 @@ def _proxy_candidates():
     return list(dict.fromkeys(candidates))
 
 
-def _connect_market_data(proxy_configs, api_key, api_secret):
+def _connect_market_data(proxy_configs, api_key, api_secret, symbol):
     for proxy in proxy_configs:
         try:
             print(f"尝试使用代理: {proxy or '无代理'}")
@@ -74,7 +75,7 @@ def _connect_market_data(proxy_configs, api_key, api_secret):
                 proxy=proxy
             )
 
-            test_ticker = market_data.get_ticker('BTC-USDT-SWAP')
+            test_ticker = market_data.get_ticker(symbol)
             if test_ticker:
                 print(f"✅ 市场数据连接成功 (代理: {proxy or '无代理'})")
                 return market_data

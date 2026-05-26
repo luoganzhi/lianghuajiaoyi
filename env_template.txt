@@ -25,6 +25,20 @@ REAL_API_PASSWORD=your_real_api_password_here
 # 代理设置，留空表示直连；Clash Verge mixed 端口通常类似 http://127.0.0.1:7897
 PROXY=
 
+# 交易模式：futures=合约, spot=现货
+TRADING_MODE=futures
+
+# 策略配置：
+# - 合约支持: contract_daily
+# - 现货支持: daily, ma, rsi, ma_curve, trend
+# 留空时自动使用模式默认策略：合约 contract_daily，现货 daily
+STRATEGY=
+
+# 交易对，留空时按模式使用默认值：
+# - 合约默认 BTC-USDT-SWAP
+# - 现货默认 BTC-USDT
+SYMBOL=
+
 # 交易环境 (true=模拟盘, false=实盘)
 IS_SIMULATED=true
 

@@ -112,7 +112,22 @@ results = backtester.run()
 ```bash
 cp env_template.txt .env
 # 编辑 .env，填写 OKX API 配置，并保持 IS_SIMULATED=true 完成模拟验证
-python src/main.py
+python -m src.main
+```
+
+通过 `.env` 选择交易模式、策略和交易对：
+
+```env
+# futures=合约, spot=现货
+TRADING_MODE=futures
+
+# 合约支持: contract_daily；现货支持: daily, ma, rsi, ma_curve, trend
+# 留空时自动使用模式默认策略：合约 contract_daily，现货 daily
+STRATEGY=
+
+# 留空时按模式使用默认值：
+# 合约默认 BTC-USDT-SWAP，现货默认 BTC-USDT
+SYMBOL=
 ```
 
 实盘运行需要二次确认：`.env` 中必须同时设置 `IS_SIMULATED=false` 和 `ALLOW_REAL_TRADING=true`，否则主程序会拒绝启动实盘模式。

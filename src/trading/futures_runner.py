@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 
 from src.runtime.app_runtime import clear_previous_data, setup_logging
+from src.config.config import CONTRACT_CONFIG, TRADING_CONFIG
 from src.trading.environment import validate_trading_environment
 # from src.monitor.report_generator import ReportGenerator  # 暂时注释掉，合约交易不需要
 
@@ -24,6 +25,7 @@ from src.trading.futures_status import (
     display_no_signal_status,
     display_signal_trigger,
 )
+from src.trading.symbols import normalize_futures_symbol
 
 
 def futures_trading_main():
@@ -50,7 +52,13 @@ def futures_trading_main():
     loop_count = 0
     
     try:
-        components = initialize_futures_components()
+        symbol = normalize_futures_symbol(
+            TRADING_CONFIG.get('symbol') or CONTRACT_CONFIG['default_symbol']
+        )
+        components = initialize_futures_components(
+            symbol=symbol,
+            strategy_name=TRADING_CONFIG.get('strategy'),
+        )
         if components is None:
             return
 
@@ -65,7 +73,6 @@ def futures_trading_main():
         return
     
     # 合约交易参数
-    symbol = "BTC-USDT-SWAP"  # 永续合约
     leverage = strategy.leverage  # 从策略获取杠杆倍数（50x）
     interval = 3   # 3秒（防止重复信号）
     capital = float(account.get_balance("USDT"))

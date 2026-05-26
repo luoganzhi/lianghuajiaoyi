@@ -4,6 +4,19 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
+
+def _env_value(name, default=None):
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    return value.strip()
+
+
+def _env_lower(name, default=None):
+    value = _env_value(name, default)
+    return value.lower() if value is not None else None
+
+
 # 交易所配置
 EXCHANGE_CONFIG = {
     'binance': {
@@ -41,6 +54,9 @@ RISK_CONFIG = {
 TRADING_CONFIG = {
     'default_symbol': 'BTC/USDT',
     'default_timeframe': '1m',
+    'mode': _env_lower('TRADING_MODE', 'futures'),  # futures=合约, spot=现货
+    'strategy': _env_lower('STRATEGY'),
+    'symbol': _env_value('SYMBOL'),
     'max_position_size': RISK_CONFIG['position']['max_size'],  # 使用风控配置
     'stop_loss_pct': RISK_CONFIG['stop_loss']['fixed_pct'],   # 使用风控配置
     'take_profit_pct': RISK_CONFIG['take_profit']['fixed_pct'] # 使用风控配置
@@ -92,11 +108,11 @@ REAL_API_SECRET = os.getenv('REAL_API_SECRET')
 REAL_API_PASSWORD = os.getenv('REAL_API_PASSWORD')
 
 # 代理设置 - 从环境变量读取；留空时自动尝试直连
-PROXY = os.getenv('PROXY')
+PROXY = _env_value('PROXY')
 
 # 现货交易配置
 SPOT_CONFIG = {
-    'default_symbol': 'BTC/USDT',
+    'default_symbol': 'BTC-USDT',
     'timeframe': '1m',
     'take_profit_pct': 0.01,  # 现货止盈比例：1%
     'stop_loss_pct': 0.005,   # 现货止损比例：0.5%
@@ -104,6 +120,7 @@ SPOT_CONFIG = {
 
 # 合约交易配置
 CONTRACT_CONFIG = {
+    'default_symbol': 'BTC-USDT-SWAP',
     'fixed_margin': 10,   # 固定保证金金额（USDT）
     'leverage': 50,      # 杠杆倍数
     'kline_interval': '1m',  # K线周期：1m(1分钟), 5m(5分钟), 15m(15分钟), 1h(1小时), 4h(4小时), 1d(1天)

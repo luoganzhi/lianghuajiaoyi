@@ -1,7 +1,15 @@
 import time
 from datetime import datetime
 
-from src.config.config import CONTRACT_CONFIG, IS_SIMULATED, MONITOR_CONFIG, PROXY, RISK_CONFIG
+from src.config.config import (
+    CONTRACT_CONFIG,
+    IS_SIMULATED,
+    MONITOR_CONFIG,
+    PROXY,
+    RISK_CONFIG,
+    SPOT_CONFIG,
+    TRADING_CONFIG,
+)
 from src.data.market_data import MarketDataFetcher
 from src.execution.okx_executor import OKXExecutor
 from src.monitor.trade_monitor import TradeMonitor
@@ -10,8 +18,9 @@ from src.risk.risk_manager import RiskManager
 from src.risk.risk_monitor import RiskMonitor
 from src.risk.stop_manager import StopManager
 from src.runtime.app_runtime import clear_previous_data, setup_logging
-from src.strategies.daily_trading_strategy import DailyTradingStrategy
 from src.trading.environment import get_trading_credentials, validate_trading_environment
+from src.trading.strategy_factory import create_spot_strategy
+from src.trading.symbols import normalize_spot_symbol
 
 
 def spot_trading_main():
@@ -44,30 +53,11 @@ def spot_trading_main():
     )
 
     # 3. 初始化策略
-    # 使用每日交易策略（50%胜率版本）
-    strategy = DailyTradingStrategy(
-        take_profit=0.01,      # 1.0%止盈
-        stop_loss=0.005,       # 0.5%止损
-        rsi_period=21,         # RSI周期
-        rsi_oversold=30.0,     # RSI超卖阈值
-        ma_short=5,            # 短期MA
-        ma_long=20,            # 长期MA
-        start_hour=0,          # 开始交易时间（0点）
-        end_hour=24,           # 结束交易时间（24点）
-        min_volume_ratio=1.2,  # 最小成交量比率
-        price_pullback=0.01,   # 价格回调阈值
-
-        # 优化参数（保持关闭状态）
-        atr_period=14,         # ATR周期
-        atr_multiplier=1.5,    # ATR倍数
-        use_dynamic_stop=False, # 关闭动态止损
-        use_macd=False,        # 关闭MACD确认
-        avoid_hours=[],        # 不避开任何时段
-        best_hours=[],         # 不限制最佳时段
-    )
+    strategy_name = TRADING_CONFIG.get('strategy') or 'daily'
+    strategy = create_spot_strategy(strategy_name)
 
     # 4. 主循环
-    symbol = "BTC-USDT"
+    symbol = normalize_spot_symbol(TRADING_CONFIG.get('symbol') or SPOT_CONFIG['default_symbol'])
     interval = 10  # 10秒
     capital = float(account.get_balance("USDT"))
     print(f"初始资金: {capital} USDT")
@@ -76,13 +66,21 @@ def spot_trading_main():
     print("=" * 50)
     print("🚀 每日交易策略启动")
     print("=" * 50)
-    print("策略类型: DailyTradingStrategy")
-    print(f"止盈设置: {strategy.take_profit * 100:.1f}%")
-    print("止损设置: 0.5%")
-    print(f"RSI周期: {strategy.rsi_period}")
-    print(f"MA设置: {strategy.ma_short}/{strategy.ma_long}")
-    print(f"交易时间: {strategy.start_hour}:00-{strategy.end_hour}:00")
-    print("每日交易限制: 1次")
+    print(f"策略类型: {strategy.__class__.__name__}")
+    print(f"策略配置名: {strategy_name}")
+    print(f"交易对: {symbol}")
+    if hasattr(strategy, 'take_profit'):
+        print(f"止盈设置: {strategy.take_profit * 100:.1f}%")
+    if hasattr(strategy, 'stop_loss'):
+        print(f"止损设置: {strategy.stop_loss * 100:.1f}%")
+    if hasattr(strategy, 'rsi_period'):
+        print(f"RSI周期: {strategy.rsi_period}")
+    if hasattr(strategy, 'ma_short') and hasattr(strategy, 'ma_long'):
+        print(f"MA设置: {strategy.ma_short}/{strategy.ma_long}")
+    if hasattr(strategy, 'start_hour') and hasattr(strategy, 'end_hour'):
+        print(f"交易时间: {strategy.start_hour}:00-{strategy.end_hour}:00")
+    if hasattr(strategy, 'daily_traded'):
+        print("每日交易限制: 1次")
     print("=" * 50)
 
     # 交易状态管理
@@ -335,8 +333,10 @@ def spot_trading_main():
                         print("🎯 当前持仓: 有")
                         print(f"📍 入场价格: {strategy.entry_price:.2f} USDT")
                         print(f"📊 当前盈亏: {current_pnl:.2f}%")
-                        print(f"🎯 止盈目标: {strategy.take_profit * 100:.1f}%")
-                        print("🛑 止损线: 0.5%")
+                        if hasattr(strategy, 'take_profit'):
+                            print(f"🎯 止盈目标: {strategy.take_profit * 100:.1f}%")
+                        if hasattr(strategy, 'stop_loss'):
+                            print(f"🛑 止损线: {strategy.stop_loss * 100:.1f}%")
                 else:
                     print("🎯 当前持仓: 无")
                     print("🔍 等待买入信号...")
