@@ -42,6 +42,7 @@ class MarketDataFetcher:
                 'http': proxy,
                 'https': proxy
             }
+        self.request_proxies = exchange_config.get('proxies')
         
         # 创建交易所实例
         self.exchange = getattr(ccxt, exchange_id)(exchange_config)
@@ -112,7 +113,12 @@ class MarketDataFetcher:
             
             for attempt in range(max_retries):
                 try:
-                    response = requests.get(url, params=params, timeout=15)
+                    response = requests.get(
+                        url,
+                        params=params,
+                        timeout=15,
+                        proxies=self.request_proxies,
+                    )
                     
                     if response.status_code != 200:
                         raise Exception(f"API请求失败: {response.status_code}")
@@ -207,7 +213,12 @@ class MarketDataFetcher:
             
             for attempt in range(max_retries):
                 try:
-                    response = requests.get(url, params=params, timeout=15)
+                    response = requests.get(
+                        url,
+                        params=params,
+                        timeout=15,
+                        proxies=self.request_proxies,
+                    )
                     
                     if response.status_code != 200:
                         raise Exception(f"API请求失败: {response.status_code}")
@@ -438,4 +449,4 @@ class MarketDataFetcher:
         elif unit == 'd':
             return number * 86400
         else:
-            raise ValueError(f"不支持的时间周期单位: {unit}") 
+            raise ValueError(f"不支持的时间周期单位: {unit}")

@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 
-from src.config.config import CONTRACT_CONFIG, IS_SIMULATED
+from src.config.config import CONTRACT_CONFIG, IS_SIMULATED, PROXY
 from src.data.market_data import MarketDataFetcher
 from src.execution.okx_executor import OKXExecutor
 from src.monitor.trade_monitor import TradeMonitor
@@ -22,9 +22,7 @@ def initialize_futures_components():
     print("正在初始化交易组件...")
     api_key, api_secret, api_password = get_trading_credentials()
 
-    proxy_configs = [
-        "http://127.0.0.1:7890",  # 备用代理1
-    ]
+    proxy_configs = _proxy_candidates()
 
     market_data = _connect_market_data(proxy_configs, api_key, api_secret)
     if not market_data:
@@ -55,6 +53,16 @@ def initialize_futures_components():
     )
 
 
+def _proxy_candidates():
+    """返回代理候选：优先使用配置代理，再尝试直连。"""
+    candidates = []
+    configured_proxy = PROXY.strip() if PROXY else None
+    if configured_proxy:
+        candidates.append(configured_proxy)
+    candidates.append(None)
+    return list(dict.fromkeys(candidates))
+
+
 def _connect_market_data(proxy_configs, api_key, api_secret):
     for proxy in proxy_configs:
         try:
@@ -66,7 +74,7 @@ def _connect_market_data(proxy_configs, api_key, api_secret):
                 proxy=proxy
             )
 
-            test_ticker = market_data.get_ticker('BTC/USDT')
+            test_ticker = market_data.get_ticker('BTC-USDT-SWAP')
             if test_ticker:
                 print(f"✅ 市场数据连接成功 (代理: {proxy or '无代理'})")
                 return market_data
@@ -91,6 +99,7 @@ def _connect_account(proxy_configs, api_key, api_secret, api_password):
             if test_balance is not None:
                 print(f"✅ 交易账户连接成功 (代理: {proxy or '无代理'})")
                 return account
+            print(f"❌ 代理 {proxy or '无代理'} 账户余额验证失败")
         except Exception as exc:
             print(f"❌ 代理 {proxy or '无代理'} 账户连接失败: {str(exc)[:100]}")
 

@@ -46,6 +46,14 @@ class OKXExecutor(BaseExecutor):
             self.exchange.options['sandbox'] = True
             self.exchange.set_sandbox_mode(True)
         logger.info(f"OKX交易执行器初始化完成 (模拟盘: {'是' if is_simulated else '否'})")
+
+    @staticmethod
+    def _to_okx_swap_inst_id(symbol: str) -> str:
+        """Normalize a symbol to OKX's SWAP instrument id, e.g. BTC-USDT-SWAP."""
+        normalized = symbol.split(':', 1)[0].replace('/', '-')
+        if not normalized.endswith('-SWAP'):
+            normalized = f"{normalized}-SWAP"
+        return normalized
         
     def place_order(self, symbol: str, order_type: str, side: str, 
                    amount: float, price: Optional[float] = None) -> Dict:
@@ -138,42 +146,16 @@ class OKXExecutor(BaseExecutor):
         Returns:
             持仓信息字典
         """
+        inst_id = self._to_okx_swap_inst_id(symbol)
         try:
-            # 首先尝试使用CCXT的fetch_positions方法
-            print(f"🔧 使用CCXT fetch_positions查询持仓...")
-            positions = self.exchange.fetch_positions([symbol])
-            print(f"🔧 CCXT持仓查询响应: {positions}")
-            
-            if positions:
-                for position in positions:
-                    if position['symbol'] == symbol and position['contracts'] > 0:
-                        logger.info(f"获取{symbol}持仓成功 (CCXT)")
-                        
-                        # 根据持仓数量确定持仓类型
-                        position_type = 'short' if position['contracts'] < 0 else 'long' if position['contracts'] > 0 else 'unknown'
-                        
-                        return {
-                            'symbol': symbol,
-                            'size': abs(float(position['contracts'])),  # 使用绝对值作为持仓数量
-                            'entry_price': float(position['entryPrice']) if position['entryPrice'] else 0.0,
-                            'unrealized_pnl': float(position['unrealizedPnl']) if position['unrealizedPnl'] else 0.0,
-                            'leverage': float(position['leverage']) if position['leverage'] else 1.0,
-                            'margin_mode': position.get('marginMode', 'isolated'),
-                            'posSide': position.get('side', ''),  # 持仓方向
-                            'position_type': position_type,  # 根据持仓数量确定的持仓类型
-                            'info': position
-                        }
-            
-            # 如果CCXT方法失败，尝试使用原生API
-            print(f"🔧 尝试使用原生API查询持仓...")
             params = {
-                'instId': symbol
+                'instType': 'SWAP',
+                'instId': inst_id,
             }
-            
-            print(f"🔧 持仓查询参数: {params}")
+            logger.debug(f"持仓查询参数: {params}")
             positions = self.exchange.privateGetAccountPositions(params)
-            print(f"🔧 持仓查询响应: {positions}")
-            
+            logger.debug(f"持仓查询响应: {positions}")
+
             if positions and positions.get('code') == '0' and 'data' in positions and positions['data']:
                 # 遍历所有持仓，找到有持仓的
                 for position in positions['data']:
@@ -189,7 +171,7 @@ class OKXExecutor(BaseExecutor):
                         position_type = 'short' if pos_size < 0 else 'long' if pos_size > 0 else 'unknown'
                         
                         return {
-                            'symbol': symbol,
+                            'symbol': inst_id,
                             'size': abs(pos_size),  # 使用绝对值作为持仓数量
                             'entry_price': float(position['avgPx']) if position['avgPx'] else 0.0,
                             'unrealized_pnl': float(position['upl']) if position['upl'] else 0.0,
@@ -201,10 +183,10 @@ class OKXExecutor(BaseExecutor):
                         }
                 
                 # 如果没有找到有持仓的，返回空
-                logger.info(f"未找到{symbol}的有效持仓")
+                logger.debug(f"未找到{inst_id}的有效持仓")
                 return {}
             else:
-                logger.info(f"未找到{symbol}的持仓数据")
+                logger.debug(f"未找到{inst_id}的持仓数据: {positions}")
                 return {}
                 
         except Exception as e:
@@ -226,7 +208,7 @@ class OKXExecutor(BaseExecutor):
         try:
             # 使用OKX的账户余额API
             # 对于合约交易，需要查询交易账户余额
-            balance_response = self.exchange.privateGetAccountBalance()
+            balance_response = self.exchange.privateGetAccountBalance({'ccy': currency})
             
             if balance_response and balance_response.get('code') == '0':
                 data = balance_response.get('data', [])
@@ -250,23 +232,10 @@ class OKXExecutor(BaseExecutor):
                 return None
                 
         except Exception as e:
-            logger.error(f"获取余额失败: {str(e)}")
-            # 如果API调用失败，尝试使用CCXT的fetch_balance方法
-            try:
-                logger.info(f"尝试使用CCXT fetch_balance方法...")
-                balance = self.exchange.fetch_balance()
-                if currency in balance['total']:
-                    avail_bal = float(balance['free'][currency])
-                    logger.info(f"CCXT获取{currency}余额成功: {avail_bal}")
-                    return avail_bal
-                return 0.0
-            except Exception as ccxt_error:
-                logger.error(f"CCXT获取余额也失败: {str(ccxt_error)}")
-                # 如果所有方法都失败，返回一个默认值（用于测试）
-                if currency == 'USDT':
-                    logger.warning(f"使用默认USDT余额: 13.03")
-                    return 13.03
-                return None
+            logger.error(f"获取余额失败: {type(e).__name__}: {str(e)}")
+            if hasattr(e, 'args'):
+                logger.error(f"余额错误详情: {e.args}")
+            return None
     
     def set_leverage(self, symbol: str, leverage: int) -> bool:
         """

@@ -91,8 +91,8 @@ REAL_API_KEY = os.getenv('REAL_API_KEY')
 REAL_API_SECRET = os.getenv('REAL_API_SECRET')
 REAL_API_PASSWORD = os.getenv('REAL_API_PASSWORD')
 
-# 代理设置 - 从环境变量读取
-PROXY = os.getenv('PROXY', "http://127.0.0.1:7890")   # 代理服务器地址
+# 代理设置 - 从环境变量读取；留空时自动尝试直连
+PROXY = os.getenv('PROXY')
 
 # 现货交易配置
 SPOT_CONFIG = {
