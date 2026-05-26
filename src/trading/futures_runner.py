@@ -4,13 +4,9 @@ import time
 import logging
 from datetime import datetime
 
-from src.config.config import CONTRACT_CONFIG, IS_SIMULATED
-from src.data.market_data import MarketDataFetcher
-from src.execution.okx_executor import OKXExecutor
-from src.monitor.trade_monitor import TradeMonitor
+from src.config.config import CONTRACT_CONFIG
 from src.runtime.app_runtime import clear_previous_data, setup_logging
-from src.strategies.contract_daily_trading_strategy import ContractDailyTradingStrategy
-from src.trading.environment import get_trading_credentials, validate_trading_environment
+from src.trading.environment import validate_trading_environment
 # from src.monitor.report_generator import ReportGenerator  # 暂时注释掉，合约交易不需要
 
 from src.trading.futures_helpers import (
@@ -22,6 +18,8 @@ from src.trading.futures_helpers import (
     close_futures_position,
     _close_position,
 )
+from src.trading.futures_setup import initialize_futures_components, print_futures_strategy_config
+from src.trading.futures_startup import check_startup_position
 
 
 def futures_trading_main():
@@ -48,87 +46,15 @@ def futures_trading_main():
     loop_count = 0
     
     try:
-        # 初始化组件
-        print("正在初始化交易组件...")
-        api_key, api_secret, api_password = get_trading_credentials()
-        
-        # 尝试不同的代理配置
-        proxy_configs = [
-            "http://127.0.0.1:7890",  # 备用代理1
-        ]
-        
-        market_data = None
-        account = None
-        
-        # 尝试初始化市场数据获取器
-        for proxy in proxy_configs:
-            try:
-                print(f"尝试使用代理: {proxy or '无代理'}")
-                market_data = MarketDataFetcher(
-                    exchange_id='okx',
-                    api_key=api_key,
-                    secret=api_secret,
-                    proxy=proxy
-                )
-                
-                # 测试连接
-                test_ticker = market_data.get_ticker('BTC/USDT')
-                if test_ticker:
-                    print(f"✅ 市场数据连接成功 (代理: {proxy or '无代理'})")
-                    break
-            except Exception as e:
-                print(f"❌ 代理 {proxy or '无代理'} 连接失败: {str(e)[:100]}")
-                continue
-        
-        if not market_data:
-            print("❌ 所有代理都无法连接，请检查网络设置")
+        components = initialize_futures_components()
+        if components is None:
             return
-        
-        # 尝试初始化交易执行器
-        for proxy in proxy_configs:
-            try:
-                account = OKXExecutor(
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    api_password=api_password,
-                    proxy=proxy,
-                    is_simulated=IS_SIMULATED
-                )
-                
-                # 测试账户连接
-                test_balance = account.get_balance("USDT")
-                if test_balance is not None:
-                    print(f"✅ 交易账户连接成功 (代理: {proxy or '无代理'})")
-                    break
-            except Exception as e:
-                print(f"❌ 代理 {proxy or '无代理'} 账户连接失败: {str(e)[:100]}")
-                continue
-        
-        if not account:
-            print("❌ 所有代理都无法连接交易账户，请检查API配置")
-            return
-        
-        trade_monitor = TradeMonitor()
-        # 使用新的合约交易策略，从配置文件读取K线周期和调试模式
-        kline_interval = CONTRACT_CONFIG.get('kline_interval', '1m')  # 默认1分钟
-        debug_mode = CONTRACT_CONFIG.get('debug_mode', False)
-        strategy = ContractDailyTradingStrategy(debug_mode=debug_mode, kline_interval=kline_interval)
-        
-        # 🎯 启用高精度模式 - 25%保证金止盈
-        # strategy.enable_high_precision_mode()
-        
-        # 记录策略初始化详情
-        logging.info(f"📊 策略初始化完成:")
-        logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
-        logging.info(f"  - 策略模式: {strategy.get_strategy_mode()}")
-        logging.info(f"  - 调试模式: {strategy.debug_mode}")
-        logging.info(f"  - 止盈比例: {strategy.take_profit*100:.3f}%")
-        logging.info(f"  - 杠杆倍数: {strategy.leverage}x")
-        logging.info(f"  - 保证金模式: {strategy.margin_mode}")
-        logging.info(f"  - K线间隔: {strategy.kline_interval}")
-        
-        print("✅ 所有组件初始化成功！")
-        
+
+        market_data = components.market_data
+        account = components.account
+        trade_monitor = components.trade_monitor
+        strategy = components.strategy
+
     except Exception as e:
         print(f"❌ 组件初始化失败: {e}")
         print("请检查网络连接和API配置")
@@ -145,34 +71,7 @@ def futures_trading_main():
     print(f"交易对: {symbol}")
     print(f"保证金模式: {strategy.margin_mode}")
     
-    # 打印策略配置
-    print("=" * 50)
-    print("🚀 合约每日交易策略 - 高杠杆版本")
-    print("=" * 50)
-    print(f"策略类型: {strategy.__class__.__name__}")
-    print(f"策略模式: {strategy.get_strategy_mode()}")
-    print(f"止盈设置: {strategy.take_profit * 100:.3f}% (基于保证金)")
-    print(f"止损设置: 无止损 (强制平仓: -100%保证金)")
-    print(f"杠杆倍数: {leverage}x")
-    print(f"保证金模式: {strategy.margin_mode}")
-    print(f"交易时间: {strategy.start_hour}:00-{strategy.end_hour}:00")
-    print(f"K线间隔: {strategy.kline_interval}")
-    print(f"固定保证金: {CONTRACT_CONFIG['fixed_margin']} USDT")
-    print(f"调试模式: {'🔧 已启用' if strategy.debug_mode else '📊 生产模式'}")
-    if strategy.debug_mode:
-        print(f"🔧 调试参数调整:")
-        print(f"  RSI超卖阈值: 30.0 → {strategy.rsi_oversold}")
-        print(f"  RSI超买阈值: 70.0 → {strategy.rsi_overbought}")
-        print(f"  最小成交量比例: 1.5 → {strategy.min_volume_ratio}")
-        print(f"  价格回调比例: 1.0% → {strategy.price_pullback*100:.1f}%")
-        print(f"  短期MA: 5 → {strategy.ma_short}")
-        print(f"  长期MA: 20 → {strategy.ma_long}")
-        print(f"  K线间隔: 15m → {strategy.kline_interval}")
-    print("=" * 50)
-    
-    # 合约交易状态管理
-    in_position = False
-    current_position = None
+    print_futures_strategy_config(strategy, leverage)
     
     # 信号去重和开仓锁机制
     last_signal = 0  # 上次信号
@@ -181,84 +80,8 @@ def futures_trading_main():
     trading_lock = False  # 开仓锁
     last_trade_time = 0  # 上次开仓时间
     trade_cooldown = 30  # 开仓冷却时间（秒）
-    
-    # 🔍 程序启动时立即检查持仓状态
-    print(f"\n🔍 程序启动时检查持仓状态...")
-    logging.info(f"🔍 程序启动时检查持仓状态...")
-    try:
-        initial_position = get_futures_position(account, symbol)
-        if initial_position and initial_position['size'] != 0:
-            print(f"⚠️ 检测到现有持仓: {initial_position['size']:.4f}张 | 盈亏: {initial_position['unrealized_pnl']:.2f}USDT")
-            
-            # 记录启动时持仓详情
-            logging.info(f"⚠️ 程序启动时检测到现有持仓:")
-            logging.info(f"  - 持仓数量: {initial_position['size']:.4f} 张")
-            logging.info(f"  - 入场价格: {initial_position['entry_price']:.2f} USDT")
-            logging.info(f"  - 未实现盈亏: {initial_position['unrealized_pnl']:.2f} USDT")
-            logging.info(f"  - 持仓方向: {'做多' if initial_position['size'] > 0 else '做空'}")
-            logging.info(f"  - 杠杆倍数: {initial_position.get('leverage', 'N/A')}")
-            logging.info(f"  - 保证金模式: {initial_position.get('margin_mode', 'N/A')}")
-            
-            # 立即设置持仓状态，防止开新仓
-            in_position = True
-            current_position = initial_position
-            
-            # 检查是否需要设置止盈单
-            try:
-                # 计算止盈价格
-                actual_entry_price = initial_position['entry_price']
-                actual_position_size = initial_position['size']
-                position_type = initial_position.get('posSide', 'long')
-                
-                # 添加调试信息
-                print(f"🔍 调试持仓方向判断:")
-                print(f"  - 原始持仓数量: {initial_position.get('size', 'N/A')}")
-                print(f"  - 转换后持仓数量: {actual_position_size}")
-                print(f"  - 持仓数量类型: {type(actual_position_size)}")
-                print(f"  - 持仓数量 > 0: {actual_position_size > 0}")
-                
-                margin_take_profit_pct = CONTRACT_CONFIG['take_profit_pct']  # 保证金止盈比例：10%
-                price_take_profit_pct = margin_take_profit_pct / leverage  # 价格止盈比例
-                
-                # 根据持仓类型判断开仓方向
-                position_type = initial_position.get('position_type', 'unknown')
-                print(f"  - 持仓类型: {position_type}")
-                
-                if position_type == 'long':  # 做多持仓
-                    actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                    startup_entry_side = 'buy'  # 做多开仓方向
-                    print(f"  - 判断结果: 做多持仓")
-                elif position_type == 'short':  # 做空持仓
-                    actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                    startup_entry_side = 'sell'  # 做空开仓方向
-                    print(f"  - 判断结果: 做空持仓")
-                else:  # 未知持仓类型，根据持仓数量判断（备用方案）
-                    if actual_position_size > 0:  # 做多持仓
-                        actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                        startup_entry_side = 'buy'  # 做多开仓方向
-                        print(f"  - 备用判断结果: 做多持仓")
-                    else:  # 做空持仓
-                        actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                        startup_entry_side = 'sell'  # 做空开仓方向
-                        print(f"  - 备用判断结果: 做空持仓")
-                
-                print(f"  - 设置的开仓方向: {startup_entry_side}")
-                
-                # 传递持仓类型而不是开仓方向
-                tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
-                if tp_order:
-                    print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
-                    
-            except Exception as tp_e:
-                print(f"⚠️ 止盈设置失败: {str(tp_e)}")
-        else:
-            print(f"✅ 无现有持仓")
-    except Exception as e:
-        print(f"⚠️ 启动时持仓检查失败: {str(e)}")
-        print(f"⚠️ 为了安全起见，程序将继续运行但会严格检查持仓状态")
-    
-    print(f"📊 初始状态: {'有持仓' if in_position else '无持仓'}")
-    print("-" * 50)
+
+    in_position, current_position = check_startup_position(account, symbol, leverage)
     
     # 优化请求频率的变量
     last_signal_check = 0  # 上次信号检查时间
