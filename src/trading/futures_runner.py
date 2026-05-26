@@ -10,14 +10,13 @@ from src.trading.environment import validate_trading_environment
 # from src.monitor.report_generator import ReportGenerator  # 暂时注释掉，合约交易不需要
 
 from src.trading.futures_helpers import (
-    execute_futures_trade,
     check_existing_take_profit_orders,
     set_take_profit_order,
     get_futures_position,
-    calculate_futures_position_size,
     close_futures_position,
     _close_position,
 )
+from src.trading.futures_entries import open_futures_position
 from src.trading.futures_setup import initialize_futures_components, print_futures_strategy_config
 from src.trading.futures_startup import check_startup_position
 from src.trading.futures_status import (
@@ -413,238 +412,23 @@ def futures_trading_main():
                 print(f"⚠️ 持仓查询失败，跳过开仓")
                 continue
                 
-            if signal == 1 and not in_position:  # 做多信号
-                print(f"\n🚀 执行合约做多开仓...")
-                
-                # 记录开仓原因和策略信息
-                logging.info(f"🎯 开仓信号触发 - 做多开仓")
-                logging.info(f"📊 开仓原因分析:")
-                logging.info(f"  - 策略信号: {signal}")
-                logging.info(f"  - 当前价格: {price:.2f} USDT")
-                logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
-                logging.info(f"  - 调试模式: {strategy.debug_mode}")
-                
-                # 基于保证金计算合约开仓数量
-                position_size = calculate_futures_position_size()
-                position_value = position_size * price
-                
-                # 计算止盈价格
-                margin_take_profit_pct = CONTRACT_CONFIG['take_profit_pct']  # 保证金止盈比例：10%
-                price_take_profit_pct = margin_take_profit_pct / leverage  # 价格止盈比例：10% ÷ 50 = 0.2%
-                take_profit_price = price * (1 + price_take_profit_pct)  # 做多触发价格
-                
-                print(f"📊 开仓详情: {position_size:.4f}张 | 价格: {price:.2f} | 止盈: {take_profit_price:.2f} | 保证金: {CONTRACT_CONFIG['fixed_margin']}USDT")
-                
-                # 记录开仓参数
-                logging.info(f"📊 开仓参数详情:")
-                logging.info(f"  - 合约数量: {position_size:.4f} 张")
-                logging.info(f"  - 开仓价格: {price:.2f} USDT")
-                logging.info(f"  - 止盈价格: {take_profit_price:.2f} USDT")
-                logging.info(f"  - 杠杆倍数: {leverage}x")
-                logging.info(f"  - 保证金: {CONTRACT_CONFIG['fixed_margin']} USDT")
-                logging.info(f"  - 保证金止盈比例: {margin_take_profit_pct*100:.1f}%")
-                logging.info(f"  - 价格止盈比例: {price_take_profit_pct*100:.3f}%")
-                
-                # 执行做多开仓
-                try:
-                    print(f"🔄 正在执行做多开仓订单...")
-                    logging.info(f"🔄 开始执行合约做多开仓 - 价格: {price:.2f}, 数量: {position_size:.4f}, 杠杆: {leverage}x")
-                    
-                    order = execute_futures_trade(account, symbol, 'buy', position_size, leverage, "market", None)
-                    if order:
-                        print(f"✅ 开仓成功! 订单ID: {order.get('id', 'N/A')}")
-                        
-                        # 立即更新持仓状态，防止重复开仓
-                        in_position = True
-                        
-                        # 激活开仓锁，防止重复开仓
-                        trading_lock = True
-                        last_trade_time = time.time()
-                        print(f"🔒 开仓锁已激活，冷却时间: {trade_cooldown}秒")
-                        
-                        # 立即获取持仓信息，获取实际入场价格并重新设定止盈
-                        time.sleep(2)  # 等待2秒让订单完全生效
-                        try:
-                            current_position = get_futures_position(account, symbol)
-                            if current_position:
-                                actual_entry_price = current_position['entry_price']
-                                actual_position_size = current_position['size']
-                                position_type = current_position.get('posSide', 'long')  # 获取持仓方向
-                                
-                                # 根据持仓数量计算止盈价格
-                                if actual_position_size > 0:  # 做多持仓
-                                    # 做多：价格上涨时盈利，止盈价格高于开仓价格
-                                    actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                                else:  # 做空持仓
-                                    # 做空：价格下跌时盈利，止盈价格低于开仓价格
-                                    actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                                
-                                # 根据持仓方向设置止盈订单
-                                try:
-                                    # 根据持仓数量判断持仓类型
-                                    position_type = 'long' if actual_position_size > 0 else 'short'
-                                    tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
-                                    if tp_order:
-                                        print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
-                                    else:
-                                        print(f"⚠️ 止盈设置失败")
-                                except Exception as tp_e:
-                                    print(f"⚠️ 止盈设置失败: {str(tp_e)}")
-                                
-                                if abs(price - actual_entry_price) > 10:
-                                    print(f"⚠️ 开仓价格与实际入场价格差异较大!")
-                                else:
-                                    print(f"✅ 开仓价格与实际入场价格一致")
-                            else:
-                                print(f"⚠️ 无法获取持仓信息")
-                        except Exception as e:
-                            print(f"⚠️ 获取持仓信息失败: {str(e)}")
-                        
-                        # 更新策略状态 - 使用实际入场价格
-                        actual_entry_price_for_strategy = current_position['entry_price'] if current_position else price
-                        strategy.on_position_entry('buy', actual_entry_price_for_strategy, position_size, datetime.now())
-                        
-                        # 记录交易
-                        trade_data = {
-                            "timestamp": datetime.now(),
-                            "symbol": symbol,
-                            "side": "buy",
-                            "size": position_size,
-                            "price": actual_entry_price_for_strategy,
-                            "value": position_value,
-                            "type": "futures_long_entry",
-                            "leverage": leverage,
-                            "order_id": order.get("id", ""),
-                            "status": order.get("status", "")
-                        }
-                        trade_monitor.record_trade(trade_data)
-                        
-                        # 更新持仓状态
-                        in_position = True
-                        print(f"✅ 已更新持仓状态")
-                        logging.info(f"✅ 已更新持仓状态")
-                    else:
-                        print("❌ 开仓失败")
-                        
-                except Exception as e:
-                    print(f"❌ 开仓失败: {str(e)}")
-                    continue
-                    
-            elif signal == -1 and not in_position:  # 做空信号
-                print(f"\n🔴 执行合约做空开仓...")
-                
-                # 记录开仓原因和策略信息
-                logging.info(f"🎯 开仓信号触发 - 做空开仓")
-                logging.info(f"📊 开仓原因分析:")
-                logging.info(f"  - 策略信号: {signal}")
-                logging.info(f"  - 当前价格: {price:.2f} USDT")
-                logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
-                logging.info(f"  - 调试模式: {strategy.debug_mode}")
-                
-                # 基于保证金计算合约开仓数量
-                position_size = calculate_futures_position_size()
-                position_value = position_size * price
-                
-                # 计算止盈价格
-                margin_take_profit_pct = CONTRACT_CONFIG['take_profit_pct']  # 保证金止盈比例：10%
-                price_take_profit_pct = margin_take_profit_pct / leverage  # 价格止盈比例：10% ÷ 50 = 0.2%
-                take_profit_price = price * (1 - price_take_profit_pct)  # 做空触发价格
-                
-                print(f"📊 开仓详情: {position_size:.4f}张 | 价格: {price:.2f} | 止盈: {take_profit_price:.2f} | 保证金: {CONTRACT_CONFIG['fixed_margin']}USDT")
-                
-                # 记录开仓参数
-                logging.info(f"📊 开仓参数详情:")
-                logging.info(f"  - 合约数量: {position_size:.4f} 张")
-                logging.info(f"  - 开仓价格: {price:.2f} USDT")
-                logging.info(f"  - 止盈价格: {take_profit_price:.2f} USDT")
-                logging.info(f"  - 杠杆倍数: {leverage}x")
-                logging.info(f"  - 保证金: {CONTRACT_CONFIG['fixed_margin']} USDT")
-                logging.info(f"  - 保证金止盈比例: {margin_take_profit_pct*100:.1f}%")
-                logging.info(f"  - 价格止盈比例: {price_take_profit_pct*100:.3f}%")
-                
-                # 执行做空开仓
-                try:
-                    print(f"🔄 正在执行做空开仓订单...")
-                    logging.info(f"🔄 开始执行合约做空开仓 - 价格: {price:.2f}, 数量: {position_size:.4f}, 杠杆: {leverage}x")
-                    
-                    order = execute_futures_trade(account, symbol, 'sell', position_size, leverage, "market", None)
-                    if order:
-                        print(f"✅ 开仓成功! 订单ID: {order.get('id', 'N/A')}")
-                        
-                        # 立即更新持仓状态，防止重复开仓
-                        in_position = True
-                        
-                        # 激活开仓锁，防止重复开仓
-                        trading_lock = True
-                        last_trade_time = time.time()
-                        print(f"🔒 开仓锁已激活，冷却时间: {trade_cooldown}秒")
-                        
-                        # 立即获取持仓信息，获取实际入场价格并重新设定止盈
-                        time.sleep(2)  # 等待2秒让订单完全生效
-                        try:
-                            current_position = get_futures_position(account, symbol)
-                            if current_position:
-                                actual_entry_price = current_position['entry_price']
-                                actual_position_size = current_position['size']
-                                position_type = current_position.get('posSide', 'short')  # 获取持仓方向
-                                
-                                # 根据持仓数量计算止盈价格
-                                if actual_position_size > 0:  # 做多持仓
-                                    # 做多：价格上涨时盈利，止盈价格高于开仓价格
-                                    actual_take_profit_price = actual_entry_price * (1 + price_take_profit_pct)
-                                else:  # 做空持仓
-                                    # 做空：价格下跌时盈利，止盈价格低于开仓价格
-                                    actual_take_profit_price = actual_entry_price * (1 - price_take_profit_pct)
-                                
-                                # 根据持仓方向设置止盈订单
-                                try:
-                                    # 根据持仓数量判断持仓类型
-                                    position_type = 'long' if actual_position_size > 0 else 'short'
-                                    tp_order = set_take_profit_order(account, symbol, position_type, actual_position_size, actual_take_profit_price)
-                                    if tp_order:
-                                        print(f"✅ 止盈设置: {actual_take_profit_price:.2f}")
-                                    else:
-                                        print(f"⚠️ 止盈设置失败")
-                                except Exception as tp_e:
-                                    print(f"⚠️ 止盈设置失败: {str(tp_e)}")
-                                
-                                if abs(price - actual_entry_price) > 10:
-                                    print(f"⚠️ 开仓价格与实际入场价格差异较大!")
-                                else:
-                                    print(f"✅ 开仓价格与实际入场价格一致")
-                            else:
-                                print(f"⚠️ 无法获取持仓信息")
-                        except Exception as e:
-                            print(f"⚠️ 获取持仓信息失败: {str(e)}")
-                        
-                        # 更新策略状态 - 使用实际入场价格
-                        actual_entry_price_for_strategy = current_position['entry_price'] if current_position else price
-                        strategy.on_position_entry('sell', actual_entry_price_for_strategy, position_size, datetime.now())
-                        
-                        # 记录交易
-                        trade_data = {
-                            "timestamp": datetime.now(),
-                            "symbol": symbol,
-                            "side": "sell",
-                            "size": position_size,
-                            "price": actual_entry_price_for_strategy,
-                            "value": position_value,
-                            "type": "futures_short_entry",
-                            "leverage": leverage,
-                            "order_id": order.get("id", ""),
-                            "status": order.get("status", "")
-                        }
-                        trade_monitor.record_trade(trade_data)
-                        
-                        # 更新持仓状态
-                        in_position = True
-                        print(f"✅ 已更新持仓状态")
-                        logging.info(f"✅ 已更新持仓状态")
-                    else:
-                        print("❌ 开仓失败")
-                        
-                except Exception as e:
-                    print(f"❌ 开仓失败: {str(e)}")
+            if signal in (1, -1) and not in_position:
+                entry_result = open_futures_position(
+                    account,
+                    symbol,
+                    signal,
+                    price,
+                    leverage,
+                    strategy,
+                    trade_monitor,
+                    trade_cooldown,
+                )
+                if entry_result.opened:
+                    in_position = True
+                    current_position = entry_result.current_position
+                    trading_lock = entry_result.trading_lock
+                    last_trade_time = entry_result.last_trade_time
+                if entry_result.skip_cycle:
                     continue
                     
             # 注释掉信号为0时的平仓逻辑，只保留止盈和强制平仓
