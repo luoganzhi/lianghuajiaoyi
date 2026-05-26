@@ -50,12 +50,15 @@ class MarketDataFetcher:
         # 设置OKX特定的配置
         if exchange_id == 'okx':
             # 根据API密钥判断是否为模拟盘
-            if api_key == SIM_API_KEY:
+            if api_key and api_key == SIM_API_KEY:
                 self.exchange.sandbox = True  # 启用模拟盘
                 print(f"🔧 OKX模拟盘已启用")
-            else:
+            elif api_key:
                 self.exchange.sandbox = False  # 实盘模式
                 print(f"🔧 OKX实盘模式")
+            else:
+                self.exchange.sandbox = False
+                print(f"🔧 OKX公共行情模式")
             
             # 移除强制设置为现货模式，让CCXT根据symbol自动判断
             self.exchange.options['adjustForTimeDifference'] = True

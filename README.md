@@ -90,21 +90,20 @@ pip install -r requirements.txt
 ## 使用说明
 
 ### 1. 回测系统
-```python
-from src.scripts.backtest_lstm import LSTMBacktester
+统一回测入口会读取 `.env` 中的 `TRADING_MODE`、`STRATEGY`、`SYMBOL`，也可以用命令行参数覆盖。默认使用模拟数据，避免误触网络。
 
-backtester = LSTMBacktester(
-    exchange_id='okx',
-    symbol='BTC/USDT',
-    timeframe='4h',
-    start_date='2023-10-01',
-    end_date='2023-12-31',
-    sequence_length=12,
-    prediction_length=3,
-    use_cached_data=True
-)
-results = backtester.run()
+```bash
+# 合约默认策略回测，使用模拟数据
+python -m src.backtest --mode futures --strategy contract_daily --days 30
+
+# 现货 RSI 策略回测，使用模拟数据
+python -m src.backtest --mode spot --strategy rsi --symbol BTC-USDT --days 30
+
+# 使用 OKX 历史K线，需要 .env 中 PROXY 可用
+python -m src.backtest --mode futures --data-source okx --timeframe 1m --days 7
 ```
+
+回测输出默认保存到 `reports/backtests/`，包含资金曲线、交易明细和指标汇总 CSV。
 
 ### 2. 实盘交易
 先复制环境变量模板，并建议先使用模拟盘：

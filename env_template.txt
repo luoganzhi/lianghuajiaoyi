@@ -39,6 +39,10 @@ STRATEGY=
 # - 现货默认 BTC-USDT
 SYMBOL=
 
+# 回测示例：
+# python -m src.backtest --mode futures --strategy contract_daily --data-source mock --days 30
+# python -m src.backtest --mode spot --strategy rsi --symbol BTC-USDT --data-source okx --days 7
+
 # 交易环境 (true=模拟盘, false=实盘)
 IS_SIMULATED=true
 
