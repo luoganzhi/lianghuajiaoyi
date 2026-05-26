@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.backtest.base_backtester import BaseBacktester
 from src.evaluation.strategy_scorer import score_strategy
+from src.strategies.signal import normalize_signal_series
 
 
 @dataclass
@@ -41,7 +42,7 @@ class SimpleBacktester(BaseBacktester):
 
     def run_backtest(self, data: pd.DataFrame, signals, strategy=None) -> dict:
         data = self._prepare_data(data)
-        signal_series = self._prepare_signals(signals, data.index)
+        signal_frame = self._prepare_signals(signals, data.index)
 
         cash = self.config.initial_cash
         position_size = 0.0
@@ -54,7 +55,8 @@ class SimpleBacktester(BaseBacktester):
 
         for timestamp, row in data.iterrows():
             price = float(row['close'])
-            signal = int(signal_series.loc[timestamp])
+            signal_row = signal_frame.loc[timestamp]
+            signal = int(signal_row['signal'])
 
             exit_reason = None
             if position_side:
@@ -125,6 +127,10 @@ class SimpleBacktester(BaseBacktester):
                 'position_size': abs(position_size),
                 'unrealized_pnl': unrealized_pnl,
                 'signal': signal,
+                'signal_action': signal_row['action'],
+                'signal_side': signal_row['side'],
+                'signal_reason': signal_row['reason'],
+                'signal_confidence': signal_row['confidence'],
             })
 
         if position_side:
@@ -203,17 +209,7 @@ class SimpleBacktester(BaseBacktester):
         return result.sort_index()
 
     def _prepare_signals(self, signals, index):
-        if isinstance(signals, pd.DataFrame):
-            if 'signal' not in signals.columns:
-                raise ValueError("信号 DataFrame 必须包含 signal 列")
-            series = signals['signal']
-        elif isinstance(signals, pd.Series):
-            series = signals
-        else:
-            series = pd.Series(list(signals), index=index[:len(signals)])
-
-        series = series.reindex(index).fillna(0).astype(int)
-        return series
+        return normalize_signal_series(signals, index)
 
     def _open_position(self, cash, price, signal):
         if self.config.mode == 'futures':

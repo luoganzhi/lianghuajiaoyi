@@ -18,6 +18,7 @@ from src.risk.risk_manager import RiskManager
 from src.risk.risk_monitor import RiskMonitor
 from src.risk.stop_manager import StopManager
 from src.runtime.app_runtime import clear_previous_data, setup_logging
+from src.strategies.signal import normalize_signal
 from src.trading.environment import get_trading_credentials, validate_trading_environment
 from src.trading.strategy_factory import create_spot_strategy
 from src.trading.symbols import normalize_spot_symbol
@@ -119,7 +120,9 @@ def spot_trading_main():
                 ohlcv_symbol = symbol
 
             ohlcv_data = market_data.get_ohlcv(ohlcv_symbol, timeframe=CONTRACT_CONFIG.get('kline_interval', '1m'))
-            signal = strategy.generate_signal(ohlcv_data)
+            raw_signal = strategy.generate_signal(ohlcv_data)
+            strategy_signal = normalize_signal(raw_signal)
+            signal = strategy_signal.value
 
             # 只在有信号时打印详细信息
             if signal != 0:
@@ -127,6 +130,7 @@ def spot_trading_main():
                 print(f"🎯 交易信号触发 - {datetime.now().strftime('%H:%M:%S')}")
                 print(f"当前价格: {price:.2f}")
                 print(f"信号类型: {'🟢 买入' if signal == 1 else '🔴 卖出'}")
+                print(f"信号原因: {strategy_signal.reason} | 置信度: {strategy_signal.confidence:.2f}")
                 print(f"策略持仓: {'有持仓' if hasattr(strategy, 'current_position') and strategy.current_position > 0 else '无持仓'}")
 
                 # 如果有持仓，显示盈亏信息

@@ -5,6 +5,7 @@ import pandas as pd
 from src.backtest.data_loader import load_backtest_data
 from src.backtest.simple_backtester import SimpleBacktester
 from src.config.config import CONTRACT_CONFIG, SPOT_CONFIG, TRADING_CONFIG
+from src.strategies.signal import normalize_signal_series
 from src.trading.strategy_factory import create_futures_strategy, create_spot_strategy
 from src.trading.symbols import normalize_futures_symbol, normalize_spot_symbol
 
@@ -68,11 +69,7 @@ def _create_strategy(mode, strategy_name):
 
 def _generate_signals(strategy, data):
     generated = strategy.generate_signals(data.copy())
-    if isinstance(generated, pd.DataFrame):
-        if 'signal' not in generated.columns:
-            raise ValueError("策略返回的 DataFrame 缺少 signal 列")
-        return generated['signal']
-    return pd.Series(list(generated), index=data.index[:len(generated)])
+    return normalize_signal_series(generated, data.index)
 
 
 def _print_summary(result, mode, strategy, symbol, timeframe, data_source):

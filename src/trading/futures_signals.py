@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from src.config.config import CONTRACT_CONFIG
+from src.strategies.signal import normalize_signal
 from src.trading.futures_helpers import get_futures_position
 
 
@@ -113,21 +114,23 @@ def _generate_entry_signal(market_data, symbol, strategy, price, last_signal, la
     ohlcv_symbol = symbol.replace('-SWAP', '') if symbol.endswith('-SWAP') else symbol
     ohlcv_data = market_data.get_ohlcv(ohlcv_symbol, timeframe=CONTRACT_CONFIG.get('kline_interval', '1m'))
     raw_signal = strategy.generate_signal(ohlcv_data)
+    strategy_signal = normalize_signal(raw_signal)
 
     logging.info("🔍 策略信号生成详情:")
     logging.info(f"  - 原始信号: {raw_signal}")
-    logging.info(f"  - 信号类型: {'做多' if raw_signal == 1 else '做空' if raw_signal == -1 else '平仓' if raw_signal == 0 else '未知'}")
+    logging.info(f"  - 标准信号: {strategy_signal}")
+    logging.info(f"  - 信号类型: {'做多' if strategy_signal.value == 1 else '做空' if strategy_signal.value == -1 else '无动作'}")
     logging.info(f"  - 当前价格: {price:.2f} USDT")
     logging.info(f"  - 策略类型: {strategy.__class__.__name__}")
     logging.info(f"  - 调试模式: {strategy.debug_mode}")
     logging.info(f"  - 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-    if raw_signal == 0:
+    if strategy_signal.value == 0:
         signal = 0
-        print(f"ℹ️ 策略生成平仓信号，已禁用 (raw_signal={raw_signal})")
-        logging.info(f"ℹ️ 策略生成平仓信号，已禁用 (raw_signal={raw_signal})")
+        print(f"ℹ️ 策略无开仓信号 (raw_signal={raw_signal})")
+        logging.info(f"ℹ️ 策略无开仓信号 (raw_signal={raw_signal})")
     else:
-        signal = raw_signal
+        signal = strategy_signal.value
         logging.info(f"✅ 策略信号有效，允许执行: {signal}")
 
     current_time = time.time()
