@@ -77,8 +77,8 @@ MONITOR_CONFIG = {
     }
 }
 
-# 交易环境切换 - 从环境变量读取
-IS_SIMULATED = os.getenv('IS_SIMULATED', 'false').lower() == 'true'  # 是否使用模拟盘 (True=模拟盘, False=实盘)
+# 交易环境切换 - 从环境变量读取；默认使用模拟盘，避免未配置 .env 时误连实盘
+IS_SIMULATED = os.getenv('IS_SIMULATED', 'true').lower() == 'true'  # True=模拟盘, False=实盘
 
 # 模拟盘API - 从环境变量读取
 SIM_API_KEY = os.getenv('SIM_API_KEY')
@@ -103,8 +103,8 @@ SPOT_CONFIG = {
 
 # 合约交易配置
 CONTRACT_CONFIG = {
-    'fixed_margin': 10,   # 固定保证金金额（USDT）- 设置为1 USDT
+    'fixed_margin': 10,   # 固定保证金金额（USDT）
     'leverage': 50,      # 杠杆倍数
     'kline_interval': '1m',  # K线周期：1m(1分钟), 5m(5分钟), 15m(15分钟), 1h(1小时), 4h(4小时), 1d(1天)
-    'take_profit_pct': 0.1,  # 保证金止盈比例：25%
-} 
+    'take_profit_pct': 0.1,  # 保证金止盈比例：10%
+}

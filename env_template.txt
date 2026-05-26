@@ -26,7 +26,7 @@ REAL_API_PASSWORD=your_real_api_password_here
 PROXY=http://127.0.0.1:7890
 
 # 交易环境 (true=模拟盘, false=实盘)
-IS_SIMULATED=false
+IS_SIMULATED=true
 
 # ========================================
 # 使用说明

@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+import tempfile
 import tensorflow as tf
 from src.strategies.lstm_strategy import LSTMStrategy
 
@@ -9,6 +9,11 @@ class TestLSTMPrediction(unittest.TestCase):
     
     def setUp(self):
         """测试前的准备工作"""
+        tf.keras.backend.clear_session()
+        np.random.seed(42)
+        tf.random.set_seed(42)
+        self.model_dir = tempfile.TemporaryDirectory()
+
         # 生成模拟的正弦波数据，这样我们可以预测明确的模式
         self.sequence_length = 24
         self.prediction_length = 6
@@ -35,9 +40,13 @@ class TestLSTMPrediction(unittest.TestCase):
         self.strategy = LSTMStrategy(
             sequence_length=self.sequence_length,
             prediction_length=self.prediction_length,
-            model_path="test_models",
+            model_path=self.model_dir.name,
             threshold=0.02
         )
+
+    def tearDown(self):
+        tf.keras.backend.clear_session()
+        self.model_dir.cleanup()
     
     def test_data_preparation(self):
         """测试数据预处理功能"""
@@ -48,20 +57,22 @@ class TestLSTMPrediction(unittest.TestCase):
         self.assertEqual(y.shape[1], self.prediction_length)
         
         # 验证数据标准化
-        self.assertTrue(np.all(X >= -1) and np.all(X <= 1))
-        self.assertTrue(np.all(y >= -1) and np.all(y <= 1))
+        self.assertTrue(np.all(np.isfinite(X)))
+        self.assertTrue(np.all(np.isfinite(y)))
+        self.assertTrue(np.nanmin(X) >= -1e-8 and np.nanmax(X) <= 1 + 1e-8)
+        self.assertTrue(np.nanmin(y) >= -1e-8 and np.nanmax(y) <= 1 + 1e-8)
     
     def test_model_training(self):
         """测试模型训练过程"""
         # 训练模型
-        history = self.strategy.train(self.data, epochs=5, batch_size=32)
+        history = self.strategy.train(self.data, epochs=5, batch_size=32, verbose=0)
         
         # 验证模型是否已训练
         self.assertTrue(self.strategy.is_trained)
         self.assertIsNotNone(self.strategy.model)
         
         # 验证模型结构
-        expected_input_shape = (None, self.sequence_length, 1)
+        expected_input_shape = (None, self.sequence_length, self.strategy.n_features)
         actual_input_shape = self.strategy.model.input_shape
         self.assertEqual(expected_input_shape, actual_input_shape)
         
@@ -72,7 +83,7 @@ class TestLSTMPrediction(unittest.TestCase):
     def test_prediction_accuracy(self):
         """测试预测准确性"""
         # 首先训练模型
-        self.strategy.train(self.data[:800], epochs=10, batch_size=32)
+        self.strategy.train(self.data[:800], epochs=10, batch_size=32, verbose=0)
         
         # 使用后200个数据点进行测试
         test_data = self.data[800:]
@@ -113,7 +124,7 @@ class TestLSTMPrediction(unittest.TestCase):
     def test_signal_generation(self):
         """测试交易信号生成"""
         # 训练模型
-        self.strategy.train(self.data[:800], epochs=5, batch_size=32)
+        self.strategy.train(self.data[:800], epochs=5, batch_size=32, verbose=0)
         
         # 生成交易信号
         signals = []
@@ -137,7 +148,7 @@ class TestLSTMPrediction(unittest.TestCase):
     def test_model_persistence(self):
         """测试模型的保存和加载"""
         # 训练并保存模型
-        self.strategy.train(self.data, epochs=5, batch_size=32)
+        self.strategy.train(self.data, epochs=5, batch_size=32, verbose=0)
         
         # 记录预测结果
         original_predictions = self.strategy.predict(self.data[-self.sequence_length:])
@@ -146,7 +157,7 @@ class TestLSTMPrediction(unittest.TestCase):
         new_strategy = LSTMStrategy(
             sequence_length=self.sequence_length,
             prediction_length=self.prediction_length,
-            model_path="test_models",
+            model_path=self.model_dir.name,
             threshold=0.02
         )
         
@@ -162,4 +173,4 @@ class TestLSTMPrediction(unittest.TestCase):
         )
 
 if __name__ == '__main__':
-    unittest.main() 
+    unittest.main()

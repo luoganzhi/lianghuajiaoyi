@@ -13,24 +13,20 @@
 ```
 lianghuajiaoyi/
 ├── src/                    # 源代码目录
-│   ├── models/            # 模型实现
-│   │   ├── lstm_base.py      # LSTM基础模型
-│   │   └── lstm_improved.py  # 改进版LSTM模型
-│   ├── data/              # 数据处理模块
-│   │   ├── market_data.py    # 市场数据获取
-│   │   └── preprocessor.py   # 数据预处理
-│   ├── backtest/          # 回测模块
-│   │   ├── engine.py         # 回测引擎
-│   │   └── analyzer.py       # 回测分析
-│   ├── trading/           # 交易模块
-│   │   ├── executor.py       # 交易执行
-│   │   └── position.py       # 仓位管理
-│   ├── risk/              # 风险控制
-│   └── utils/             # 工具函数
-├── models/                # 模型存储
-├── data/                 # 数据存储
-├── reports/              # 回测报告
-└── logs/                 # 日志文件
+│   ├── main.py              # OKX合约交易主入口
+│   ├── data/                # 市场数据获取与预处理
+│   ├── strategies/          # LSTM、均线、RSI、网格、趋势等策略
+│   ├── execution/           # 交易执行器
+│   ├── risk/                # 风控、仓位、止盈止损与风险监控
+│   ├── monitor/             # 交易监控与报告
+│   ├── scripts/             # LSTM训练、回测、实盘脚本
+│   ├── examples/            # 示例和简单回测脚本
+│   └── tests/               # 自动化测试
+├── models/                  # 模型存储
+├── test_models/             # 测试模型存储
+├── data/                    # 数据缓存
+├── templates/               # 报告模板
+└── logs/                    # 运行日志
 ```
 
 ## 模块功能与开发状态
@@ -71,11 +67,12 @@ lianghuajiaoyi/
 
 ### 依赖要求
 ```
-numpy==1.21.0  # 降级解决兼容性问题
-tensorflow==2.10.0
-pandas>=1.3.0
-scikit-learn>=0.24.2
-matplotlib>=3.4.0
+pandas>=1.5.0
+numpy>=1.21.0
+tensorflow>=2.10.0
+scikit-learn>=1.0.0
+ccxt>=2.0.0
+plotly>=5.10.0
 ```
 
 ### 安装步骤
@@ -94,31 +91,28 @@ pip install -r requirements.txt
 
 ### 1. 回测系统
 ```python
-from src.backtest.engine import LSTMBacktester
+from src.scripts.backtest_lstm import LSTMBacktester
 
-config = {
-    'symbol': 'BTC/USDT',
-    'timeframe': '4h',
-    'start_date': '2023-10-01',
-    'end_date': '2023-12-31',
-    'sequence_length': 12,
-    'prediction_length': 3
-}
-
-backtester = LSTMBacktester(config)
+backtester = LSTMBacktester(
+    exchange_id='okx',
+    symbol='BTC/USDT',
+    timeframe='4h',
+    start_date='2023-10-01',
+    end_date='2023-12-31',
+    sequence_length=12,
+    prediction_length=3,
+    use_cached_data=True
+)
 results = backtester.run()
 ```
 
 ### 2. 实盘交易
-```python
-from src.trading.executor import LSTMTrader
+先复制环境变量模板，并建议先使用模拟盘：
 
-trader = LSTMTrader(
-    symbol='BTC/USDT',
-    timeframe='4h',
-    model_path='models/lstm_latest'
-)
-trader.run()
+```bash
+cp env_template.txt .env
+# 编辑 .env，填写 OKX API 配置，并保持 IS_SIMULATED=true 完成模拟验证
+python src/main.py
 ```
 
 ## 开发进展
@@ -142,8 +136,8 @@ trader.run()
 4. 风险控制策略
 
 ## 注意事项
-1. 请确保使用正确版本的NumPy（1.21.0）
+1. 请按 `requirements.txt` 安装依赖，避免 NumPy、TensorFlow 等版本不兼容
 2. 回测时注意数据时间范围的选择
 3. 实盘交易前必须进行充分的回测验证
 4. 建议先使用小资金进行实盘测试
-5. 定期检查和更新模型参数 
+5. 定期检查和更新模型参数

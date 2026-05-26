@@ -31,16 +31,16 @@ nano .env
 ### **2. 配置API密钥**
 ```bash
 # .env 文件内容示例
-SIM_API_KEY=48b64404-aff0-415e-9820-f9a55a3d8690
-SIM_API_SECRET=83B2A5C7AEB8DB8EA71BF72C4AB886C5
-SIM_API_PASSWORD=!qwer1234QWER
+SIM_API_KEY=your_sim_api_key_here
+SIM_API_SECRET=your_sim_api_secret_here
+SIM_API_PASSWORD=your_sim_api_password_here
 
-REAL_API_KEY=51d42bd1-85a5-42a0-9a6e-f6d7383d6b62
-REAL_API_SECRET=7A5605E39F0585E6032BDA3BFA88A9E4
-REAL_API_PASSWORD=!qwer1234QWER
+REAL_API_KEY=your_real_api_key_here
+REAL_API_SECRET=your_real_api_secret_here
+REAL_API_PASSWORD=your_real_api_password_here
 
 PROXY=http://127.0.0.1:7890
-IS_SIMULATED=false
+IS_SIMULATED=true
 ```
 
 ### **3. 验证配置**

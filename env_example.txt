@@ -13,4 +13,4 @@ REAL_API_PASSWORD=your_real_api_password_here
 
 # 其他配置
 PROXY=http://127.0.0.1:7890
-IS_SIMULATED=false
+IS_SIMULATED=true

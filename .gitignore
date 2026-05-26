@@ -116,12 +116,18 @@ trade_monitor.log
 config_backup_*.py
 
 # 数据文件
-data/
+/data/
 *.csv
 *.xlsx
 *.json
 *.pickle
 *.pkl
+
+# 模型产物
+/models/
+/test_models/
+*.h5
+*.keras
 
 # 临时文件
 *.tmp
@@ -160,19 +166,19 @@ backtest_*.json
 strategy_backup_*.py
 strategy_backup_*.json
 
-# 测试文件
-test_*.py
-*_test.py
-*_example.py
+# 根目录临时测试/示例文件；保留 src/ 下的测试和示例源码可见
+/test_*.py
+/*_test.py
+/*_example.py
 
 # 工具和脚本文件
-tools/
-adjust_kline_interval.py
-config_template.py
-high_precision_mode_example.py
-debug_equity.py
-run_*.py
-test_strategy_integration.py
+/tools/
+/adjust_kline_interval.py
+/config_template.py
+/high_precision_mode_example.py
+/debug_equity.py
+/run_*.py
+/test_strategy_integration.py
 
 # 文档备份
 *_SUMMARY.md

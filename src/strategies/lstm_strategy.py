@@ -51,6 +51,23 @@ class LSTMStrategy:
         
         # 加载已有模型（如果存在）
         self._load_model()
+
+    def _build_feature_frame(self, data: pd.DataFrame) -> pd.DataFrame:
+        """补齐模型需要的技术指标特征。"""
+        data = data.copy()
+
+        if 'timestamp' in data.columns:
+            data = data.sort_values('timestamp')
+        else:
+            data = data.sort_index()
+
+        data['ma5'] = data['close'].rolling(window=5).mean()
+        data['ma10'] = data['close'].rolling(window=10).mean()
+        data['rsi'] = self.calculate_rsi(data['close'])
+        data['macd'] = self.calculate_macd(data['close'])
+        data['atr'] = self.calculate_atr(data['high'], data['low'], data['close'])
+
+        return data.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0)
         
     def _build_model(self) -> keras.Model:
         """构建增强的LSTM模型，使用注意力机制和残差连接"""
@@ -83,24 +100,12 @@ class LSTMStrategy:
         
     def _prepare_data(self, data: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         """准备训练数据，对每个特征单独进行标准化"""
-        # 计算技术指标
-        data = data.copy()
-        data['ma5'] = data['close'].rolling(window=5).mean()
-        data['ma10'] = data['close'].rolling(window=10).mean()
-        data['rsi'] = self.calculate_rsi(data['close'])
-        data['macd'] = self.calculate_macd(data['close'])
-        data['atr'] = self.calculate_atr(data['high'], data['low'], data['close'])
-        
-        # 填充缺失值
-        data = data.ffill().bfill()
+        data = self._build_feature_frame(data)
         
         # 检查特征
         missing_features = [col for col in self.features if col not in data.columns]
         if missing_features:
             raise ValueError(f"缺少必要的特征: {missing_features}")
-        
-        # 确保数据是按时间排序的
-        data = data.sort_values('timestamp')
         
         # 对每个特征单独进行标准化
         scaled_features = []
@@ -140,7 +145,7 @@ class LSTMStrategy:
         
         return X, y
         
-    def train(self, data: pd.DataFrame, epochs: int = 50, batch_size: int = 32):
+    def train(self, data: pd.DataFrame, epochs: int = 50, batch_size: int = 32, verbose: int = 1):
         """训练模型，增加了早停和学习率调整"""
         X, y = self._prepare_data(data)
         
@@ -170,7 +175,7 @@ class LSTMStrategy:
             validation_split=0.2,
             callbacks=callbacks,
             shuffle=True,
-            verbose=1
+            verbose=verbose
         )
         
         # 保存模型和缩放器
@@ -208,20 +213,8 @@ class LSTMStrategy:
         """使用多特征进行预测"""
         if not self.is_trained:
             raise ValueError("模型未训练")
-        
-        # 准备预测数据
-        scaled_features = []
-        for feature in self.features:
-            feature_data = data[feature].values.reshape(-1, 1)
-            if feature in self.scalers:
-                scaled_feature = self.scalers[feature].transform(feature_data)
-            else:
-                raise ValueError(f"特征 {feature} 的缩放器未找到")
-            scaled_features.append(scaled_feature)
-        
-        # 组合所有特征
-        scaled_data = np.hstack(scaled_features)
-        X = scaled_data.reshape(1, self.sequence_length, self.n_features)
+
+        X = self._prepare_features(data)
         
         # 预测
         scaled_pred = self.model.predict(X, verbose=0)
@@ -230,6 +223,28 @@ class LSTMStrategy:
         predictions = self.scalers['close'].inverse_transform(scaled_pred.reshape(-1, 1))
         
         return predictions.flatten()
+
+    def _classify_signal(self, pred_close: float, current_data: pd.Series) -> int:
+        """根据预测价格和当前指标生成交易信号。"""
+        current_price = current_data['close']
+        current_ma5 = current_data['ma5']
+        current_ma10 = current_data['ma10']
+        current_rsi = current_data['rsi']
+        current_macd = current_data['macd']
+
+        price_change = (pred_close - current_price) / current_price
+
+        if (price_change > self.threshold * 0.5 and
+            (current_ma5 > current_ma10 or current_rsi < 60) and
+            current_macd > -0.001):
+            return 1
+
+        if (price_change < -self.threshold * 0.5 and
+            (current_ma5 < current_ma10 or current_rsi > 40) and
+            current_macd < 0.001):
+            return -1
+
+        return 0
         
     def calculate_rsi(self, data: pd.Series, periods: int = 14) -> pd.Series:
         """计算RSI指标"""
@@ -271,16 +286,7 @@ class LSTMStrategy:
         signals = []
         sequence_length = self.sequence_length
         
-        # 计算技术指标
-        data = data.copy()
-        data['ma5'] = data['close'].rolling(window=5).mean()
-        data['ma10'] = data['close'].rolling(window=10).mean()
-        data['rsi'] = self.calculate_rsi(data['close'])
-        data['macd'] = self.calculate_macd(data['close'])
-        data['atr'] = self.calculate_atr(data['high'], data['low'], data['close'])
-        
-        # 填充缺失值
-        data = data.ffill().bfill()
+        data = self._build_feature_frame(data)
         
         # 记录预测结果
         predictions = []
@@ -310,25 +316,8 @@ class LSTMStrategy:
                 predictions.append(pred_close)
                 actual_prices.append(current_price)
                 
-                # 计算预测涨跌幅
                 price_change = (pred_close - current_price) / current_price
-                
-                # 生成信号
-                signal = 0
-                
-                # 买入条件（降低门槛）
-                if (price_change > self.threshold * 0.5 and  # 降低预测涨幅要求
-                    (current_ma5 > current_ma10 or          # 放宽均线条件
-                     current_rsi < 60) and                 # 放宽RSI条件
-                    current_macd > -0.001):               # 放宽MACD条件
-                    signal = 1
-                    
-                # 卖出条件（降低门槛）
-                elif (price_change < -self.threshold * 0.5 and  # 降低预测跌幅要求
-                      (current_ma5 < current_ma10 or           # 放宽均线条件
-                       current_rsi > 40) and                  # 放宽RSI条件
-                      current_macd < 0.001):                 # 放宽MACD条件
-                    signal = -1
+                signal = self._classify_signal(pred_close, data.iloc[i])
                     
                 signals.append(signal)
                 
@@ -364,11 +353,30 @@ class LSTMStrategy:
             print(f"生成信号数量: {sum(1 for s in signals if s != 0)}")
         
         return signals
+
+    def generate_signal(self, data: pd.DataFrame) -> int:
+        """生成最新一个时间点的交易信号。"""
+        if not self.is_trained:
+            return 0
+
+        data = self._build_feature_frame(data)
+        if len(data) < self.sequence_length:
+            return 0
+
+        if len(data) > self.sequence_length:
+            sequence = data.iloc[-self.sequence_length - 1:-1]
+            current_data = data.iloc[-1]
+        else:
+            sequence = data.tail(self.sequence_length)
+            current_data = sequence.iloc[-1]
+
+        pred_close = self.predict(sequence)[0]
+        return self._classify_signal(pred_close, current_data)
         
-    def update_model(self, new_data: pd.DataFrame, retrain: bool = False):
+    def update_model(self, new_data: pd.DataFrame, retrain: bool = False, verbose: int = 0):
         """更新模型，支持增量学习和完全重训练"""
         if retrain:
-            self.train(new_data)
+            self.train(new_data, verbose=verbose)
         else:
             # 增量学习
             X, y = self._prepare_data(new_data)
@@ -382,16 +390,12 @@ class LSTMStrategy:
         
     def _prepare_features(self, data: pd.DataFrame) -> np.ndarray:
         """准备单个预测的特征数据"""
-        # 计算技术指标
-        data = data.copy()
-        data['ma5'] = data['close'].rolling(window=5).mean()
-        data['ma10'] = data['close'].rolling(window=10).mean()
-        data['rsi'] = self.calculate_rsi(data['close'])
-        data['macd'] = self.calculate_macd(data['close'])
-        data['atr'] = self.calculate_atr(data['high'], data['low'], data['close'])
-        
-        # 填充缺失值
-        data = data.ffill().bfill()
+        data = self._build_feature_frame(data)
+
+        if len(data) < self.sequence_length:
+            raise ValueError(f"预测数据不足，至少需要 {self.sequence_length} 条数据")
+
+        data = data.tail(self.sequence_length)
         
         # 标准化特征
         scaled_features = []
@@ -407,4 +411,4 @@ class LSTMStrategy:
         scaled_data = np.hstack(scaled_features)
         
         # 添加批次维度
-        return scaled_data.reshape(1, self.sequence_length, self.n_features) 
+        return scaled_data.reshape(1, self.sequence_length, self.n_features)
