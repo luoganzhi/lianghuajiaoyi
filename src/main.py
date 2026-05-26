@@ -2,71 +2,17 @@ import sys
 import os
 import time
 import logging
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
+from datetime import datetime
 
-# 加载环境变量
-load_dotenv()
+try:
+    from src.runtime.app_runtime import bootstrap_project_path, clear_previous_data, setup_logging
+except ModuleNotFoundError:
+    from runtime.app_runtime import bootstrap_project_path, clear_previous_data, setup_logging
 
-# 添加项目根目录到Python路径
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)  # src的父目录，即项目根目录
 
-# 确保项目根目录是正确的
-if not os.path.exists(os.path.join(project_root, 'src')):
-    # 如果找不到src目录，说明project_root计算错误，重新计算
-    project_root = os.getcwd()  # 使用当前工作目录作为项目根目录
+project_root = bootstrap_project_path()
 
-# 最终验证项目根目录
-if not os.path.exists(os.path.join(project_root, 'src')):
-    print(f"❌ 无法找到src目录，请检查项目结构")
-    print(f"📁 当前工作目录: {os.getcwd()}")
-    print(f"📁 计算的project_root: {project_root}")
-    sys.exit(1)
-
-print(f"✅ 项目根目录: {project_root}")
-sys.path.insert(0, project_root)
-
-# 配置日志
-def setup_logging():
-    """配置日志系统"""
-    # 创建logs目录
-    log_dir = os.path.join(project_root, 'logs')
-    os.makedirs(log_dir, exist_ok=True)
-    
-    # 清除之前的日志配置
-    for handler in logging.root.handlers[:]:
-        logging.root.removeHandler(handler)
-    
-    # 配置根日志记录器
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(os.path.join(log_dir, 'main.log'), encoding='utf-8'),
-            logging.StreamHandler()
-        ],
-        force=True  # 强制重新配置
-    )
-    
-    # 确保所有模块的日志记录器都使用相同的配置
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    
-    # 设置特定模块的日志级别
-    logging.getLogger('ccxt').setLevel(logging.WARNING)
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    
-    # 强制所有模块的日志记录器继承根配置
-    for name in logging.root.manager.loggerDict:
-        logger = logging.getLogger(name)
-        if not logger.handlers:  # 如果该日志记录器没有处理器
-            logger.handlers = root_logger.handlers[:]  # 复制根日志记录器的处理器
-            logger.propagate = False  # 防止重复输出
-    
-    print(f"✅ 日志配置完成，日志文件: {os.path.join(log_dir, 'main.log')}")
-
-from src.config.config import *
+from src.config.config import CONTRACT_CONFIG, IS_SIMULATED, MONITOR_CONFIG, PROXY, RISK_CONFIG
 from src.data.market_data import MarketDataFetcher
 from src.execution.okx_executor import OKXExecutor
 from src.risk.risk_manager import RiskManager
@@ -76,7 +22,7 @@ from src.risk.position_manager import PositionManager
 from src.risk.stop_manager import StopManager
 from src.strategies.daily_trading_strategy import DailyTradingStrategy
 from src.strategies.contract_daily_trading_strategy import ContractDailyTradingStrategy
-from src.trading.environment import validate_trading_environment
+from src.trading.environment import get_trading_credentials, validate_trading_environment
 # from src.monitor.report_generator import ReportGenerator  # 暂时注释掉，合约交易不需要
 
 # 初始化日志（在所有模块导入后）
@@ -91,60 +37,6 @@ from src.trading.futures_helpers import (
     close_futures_position,
     _close_position,
 )
-
-def clear_previous_data():
-    """清除之前的数据和日志"""
-    import os
-    import shutil
-    
-    print("🧹 清理之前的数据...")
-    
-    # 清理日志文件（保留main.log）
-    log_dirs = ["logs", "reports"]
-    for log_dir in log_dirs:
-        if os.path.exists(log_dir):
-            try:
-                # 保留main.log文件
-                main_log_file = os.path.join(log_dir, 'main.log')
-                if os.path.exists(main_log_file):
-                    # 备份main.log
-                    backup_log_file = os.path.join(log_dir, 'main_backup.log')
-                    shutil.copy2(main_log_file, backup_log_file)
-                    print(f"✅ 备份日志文件: {backup_log_file}")
-                
-                # 删除目录内容，但保留目录
-                for item in os.listdir(log_dir):
-                    item_path = os.path.join(log_dir, item)
-                    if os.path.isfile(item_path):
-                        os.remove(item_path)
-                    elif os.path.isdir(item_path):
-                        shutil.rmtree(item_path)
-                
-                print(f"✅ 清理 {log_dir} 目录内容完成")
-            except Exception as e:
-                print(f"⚠️ 清理 {log_dir} 目录失败: {e}")
-        
-        # 确保目录存在
-        try:
-            os.makedirs(log_dir, exist_ok=True)
-            print(f"✅ 确保 {log_dir} 目录存在")
-        except Exception as e:
-            print(f"⚠️ 创建 {log_dir} 目录失败: {e}")
-    
-    # 清理临时文件（排除logs目录中的文件）
-    temp_files = ["*.log", "*.tmp", "*.cache"]
-    for pattern in temp_files:
-        try:
-            import glob
-            for file in glob.glob(pattern):
-                # 跳过logs目录中的文件
-                if not file.startswith('logs/') and not os.path.dirname(file) == 'logs':
-                    os.remove(file)
-                    print(f"✅ 删除临时文件: {file}")
-        except Exception as e:
-            pass
-    
-    print("🧹 数据清理完成")
 
 def futures_trading_main():
     """
@@ -172,6 +64,7 @@ def futures_trading_main():
     try:
         # 初始化组件
         print("正在初始化交易组件...")
+        api_key, api_secret, api_password = get_trading_credentials()
         
         # 尝试不同的代理配置
         proxy_configs = [
@@ -185,21 +78,12 @@ def futures_trading_main():
         for proxy in proxy_configs:
             try:
                 print(f"尝试使用代理: {proxy or '无代理'}")
-                # 根据配置选择API密钥
-                if IS_SIMULATED:
-                    market_data = MarketDataFetcher(
-                        exchange_id='okx',
-                        api_key=SIM_API_KEY,
-                        secret=SIM_API_SECRET,
-                        proxy=proxy
-                    )
-                else:
-                    market_data = MarketDataFetcher(
-                        exchange_id='okx',
-                        api_key=REAL_API_KEY,
-                        secret=REAL_API_SECRET,
-                        proxy=proxy
-                    )
+                market_data = MarketDataFetcher(
+                    exchange_id='okx',
+                    api_key=api_key,
+                    secret=api_secret,
+                    proxy=proxy
+                )
                 
                 # 测试连接
                 test_ticker = market_data.get_ticker('BTC/USDT')
@@ -217,22 +101,13 @@ def futures_trading_main():
         # 尝试初始化交易执行器
         for proxy in proxy_configs:
             try:
-                if IS_SIMULATED:
-                    account = OKXExecutor(
-                        api_key=SIM_API_KEY,
-                        api_secret=SIM_API_SECRET,
-                        api_password=SIM_API_PASSWORD,
-                        proxy=proxy,
-                        is_simulated=True
-                    )
-                else:
-                    account = OKXExecutor(
-                        api_key=REAL_API_KEY,
-                        api_secret=REAL_API_SECRET,
-                        api_password=REAL_API_PASSWORD,
-                        proxy=proxy,
-                        is_simulated=False
-                    )
+                account = OKXExecutor(
+                    api_key=api_key,
+                    api_secret=api_secret,
+                    api_password=api_password,
+                    proxy=proxy,
+                    is_simulated=IS_SIMULATED
+                )
                 
                 # 测试账户连接
                 test_balance = account.get_balance("USDT")
@@ -1239,14 +1114,7 @@ def main():
     setup_logging()
     
     # 1. 选择API信息
-    if IS_SIMULATED:
-        api_key = SIM_API_KEY
-        api_secret = SIM_API_SECRET
-        api_password = SIM_API_PASSWORD
-    else:
-        api_key = REAL_API_KEY
-        api_secret = REAL_API_SECRET
-        api_password = REAL_API_PASSWORD
+    api_key, api_secret, api_password = get_trading_credentials()
 
     # 2. 初始化API对象
     market_data = MarketDataFetcher(exchange_id='okx', proxy=PROXY)
