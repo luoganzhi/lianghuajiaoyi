@@ -66,6 +66,19 @@ def setup_logging():
     
     print(f"✅ 日志配置完成，日志文件: {os.path.join(log_dir, 'main.log')}")
 
+def validate_trading_environment():
+    """阻止未显式确认的实盘交易启动。"""
+    if IS_SIMULATED:
+        return True
+
+    if ALLOW_REAL_TRADING:
+        print("⚠️ 实盘交易已启用，请确认账户、杠杆和仓位配置")
+        return True
+
+    print("❌ 已配置为实盘模式，但未设置 ALLOW_REAL_TRADING=true")
+    print("💡 请先使用 IS_SIMULATED=true 完成模拟验证；确需实盘时再显式开启 ALLOW_REAL_TRADING")
+    return False
+
 from src.config.config import *
 from src.data.market_data import MarketDataFetcher
 from src.execution.okx_executor import OKXExecutor
@@ -629,6 +642,8 @@ def futures_trading_main():
     合约交易主程序
     """
     print("🚀 启动合约交易模式...")
+    if not validate_trading_environment():
+        return
     
     # 记录程序启动
     logging.info(f"🚀 合约交易程序启动")
@@ -1704,6 +1719,8 @@ def futures_trading_main():
 # 原有的现货交易主程序保持不变
 def main():
     print("🚀 启动现货交易模式...")
+    if not validate_trading_environment():
+        return
     
     # 清理之前的数据
     clear_previous_data()

@@ -28,6 +28,9 @@ PROXY=http://127.0.0.1:7890
 # 交易环境 (true=模拟盘, false=实盘)
 IS_SIMULATED=true
 
+# 实盘二次确认；只有 IS_SIMULATED=false 且此项为 true 时才允许实盘启动
+ALLOW_REAL_TRADING=false
+
 # ========================================
 # 使用说明
 # ========================================

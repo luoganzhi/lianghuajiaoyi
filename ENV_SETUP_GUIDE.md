@@ -41,6 +41,7 @@ REAL_API_PASSWORD=your_real_api_password_here
 
 PROXY=http://127.0.0.1:7890
 IS_SIMULATED=true
+ALLOW_REAL_TRADING=false
 ```
 
 ### **3. 验证配置**
@@ -109,6 +110,13 @@ SIM_API_SECRET = os.getenv('SIM_API_SECRET')
 ```bash
 # 使用本地 .env 文件
 python src/main.py
+```
+
+默认情况下项目只允许模拟盘启动。确需实盘时，需要同时设置：
+
+```bash
+IS_SIMULATED=false
+ALLOW_REAL_TRADING=true
 ```
 
 ### **服务器部署**

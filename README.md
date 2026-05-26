@@ -115,6 +115,8 @@ cp env_template.txt .env
 python src/main.py
 ```
 
+实盘运行需要二次确认：`.env` 中必须同时设置 `IS_SIMULATED=false` 和 `ALLOW_REAL_TRADING=true`，否则主程序会拒绝启动实盘模式。
+
 ## 开发进展
 
 ### 已完成

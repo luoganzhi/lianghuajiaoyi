@@ -79,6 +79,7 @@ MONITOR_CONFIG = {
 
 # 交易环境切换 - 从环境变量读取；默认使用模拟盘，避免未配置 .env 时误连实盘
 IS_SIMULATED = os.getenv('IS_SIMULATED', 'true').lower() == 'true'  # True=模拟盘, False=实盘
+ALLOW_REAL_TRADING = os.getenv('ALLOW_REAL_TRADING', 'false').lower() == 'true'  # 实盘二次确认开关
 
 # 模拟盘API - 从环境变量读取
 SIM_API_KEY = os.getenv('SIM_API_KEY')
